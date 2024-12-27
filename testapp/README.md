@@ -48,3 +48,11 @@ npm run-script build
 ```bash
 uvicorn main:app
 ```
+
+# 在JavaScript中Import css
+```javascript
+// 这个css文件将被import到最终的HTML文件中。
+import './App.css';
+// or 
+import './App.scss';
+```
