@@ -6,9 +6,10 @@ module.exports = {
     mode: "development",
     entry: {
         "index": './javascripts/index.js',
+        "admin": './javascripts/admin.js',
     },
     output: {
-        path: path.resolve("static", "js-bundle"),
+        path: path.resolve("dist"),
         filename: "[name].js",
         clean: true
     },
@@ -31,7 +32,9 @@ module.exports = {
     plugins: [
         new HtmlWebpackPlugin({
             template: './templates/index.html',
-            filename: './webpack/templates/index.html'
+            filename: 'templates/index.html',
+            publicPath: '/dist/',
+            chunks: ['index']
         }),
     ],
 }

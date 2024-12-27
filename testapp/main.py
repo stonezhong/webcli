@@ -7,16 +7,16 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI() # 定义一个fast API application
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/dist", StaticFiles(directory="dist"), name="dist")
 
-templates = Jinja2Templates(directory="static/js-bundle")
+templates = Jinja2Templates(directory="dist/templates")
 
-@app.get("/")
-async def root():
-    return {"message": "Hello world!"}
+# @app.get("/")
+# async def root():
+#     return {"message": "Hello world!"}
 
-@app.get("/test", response_class=HTMLResponse)
-async def test_page(request: Request):
-    # Render the 'index.html' template with some context
+@app.get("/", response_class=HTMLResponse)
+async def home_page(request: Request):
     return templates.TemplateResponse(
         "index.html", 
         {
@@ -24,3 +24,4 @@ async def test_page(request: Request):
             "title": "Home Page"
         }
     )
+
