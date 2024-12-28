@@ -1,0 +1,24 @@
+.cli-page {
+	height: 100vh;
+	width: 100%;
+}
+
+.answer-panel {
+	height: calc(100vh - 200px);
+}
+
+.answer-inner-panel {
+	height: 100%;
+	padding-top: 12px;
+	padding-bottom: 12px;
+	overflow: scroll;
+}
+
+.question-panel {
+	height: 200px;
+}
+
+.question-inner-panel {
+	padding-bottom: 12px;
+	padding-top: 12px;
+}
