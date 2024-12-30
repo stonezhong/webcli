@@ -38,13 +38,21 @@ def monitoring_client_to_str(monitoring_client:Optional["ActionMonitoringClient"
     return "None" if monitoring_client is None else f"ActionMonitoringClient(id={monitoring_client.id})"
 
 class ActionHandler(ABC):
+    cli_handler: "CLIHandler" = None
+
     # can you handle this request?
     @abstractmethod
     def can_handle(self, request:Any) -> bool:
         pass # pragma: no cover
 
+    def startup(self, cli_handler: "CLIHandler"):
+        self.cli_handler = cli_handler
+
+    def shutdown(self):
+        pass # pragma: no cover
+
     @abstractmethod
-    def handle(self, action_id:int, request:Any, cli_handler: "CLIHandler"):
+    def handle(self, action_id:int, request:Any):
         # to complete the action, you can call
         # cli_handler.complete_action(None, action_id, ...)
         #
@@ -178,6 +186,14 @@ class CLIHandler:
 
         self.event_loop = get_event_loop()
 
+        # register all action handler
+        for action_handler in self.action_handlers:
+            try:
+                logger.debug(f"CLIHandler.startup: startup action handler {action_handler}")
+                action_handler.startup(self)
+            except Exception:
+                # we will tolerate if action handler failed to startup
+                logger.error(f"CLIHandler.startup: action handler startup exception", exc_info=True)
         # load pending Action that is stored in database
         with Session(self.db_engine) as session:
             for db_action in session.query(DBAction).filter(DBAction.is_completed == False).all():
@@ -191,6 +207,15 @@ class CLIHandler:
         logger.debug("CLIHandler.shutdown: enter")
         assert self.require_shutdown == False
         self.require_shutdown = True
+
+        # shutdown all action handler
+        for action_handler in reversed(self.action_handlers):
+            try:
+                logger.debug(f"CLIHandler.shutdown: shutdown action handler {action_handler}")
+                action_handler.shutdown()
+            except Exception:
+                # we will tolerate if action handler failed to shutdown
+                logger.error(f"CLIHandler.shutdown: action handler shutdown exception", exc_info=True)
         if self.scavenger_thread is not None:
             self.scavenger_thread.join()
         self.executor.shutdown(wait=True)
@@ -319,7 +344,7 @@ class CLIHandler:
             self.action_info_dict[action.id] = ActionInfo(action)
 
             logger.debug(f"{log_prefix}: invoking handle in thread pool, handler {found_action_handler.handle}")
-            self.executor.submit(found_action_handler.handle, action.id, request, self)
+            self.executor.submit(found_action_handler.handle, action.id, request)
 
             rs = CLIHandlerStatus.OK
             if async_call is not None:

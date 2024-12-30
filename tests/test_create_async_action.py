@@ -91,7 +91,7 @@ async def test_async_start_async_action_with_dummy_handler(get_utc_now, cli_hand
 
     action_handler.can_handle.assert_called()
     action_handler.can_handle.assert_called_with({"foo": 1})
-    action_handler.handle.assert_called_with(1, {"foo": 1}, cli_handler)
+    action_handler.handle.assert_called_with(1, {"foo": 1})
 
     assert async_action.id == 1
     assert async_action.is_completed == False
@@ -133,7 +133,7 @@ async def test_start_async_action_with_dummy_handler(get_utc_now, cli_handler, a
 
     action_handler.can_handle.assert_called()
     action_handler.can_handle.assert_called_with({"foo": 1})
-    action_handler.handle.assert_called_with(1, {"foo": 1}, cli_handler)
+    action_handler.handle.assert_called_with(1, {"foo": 1})
 
     assert async_action.id == 1
     assert async_action.is_completed == False
@@ -180,7 +180,7 @@ async def test_start_async_action_with_no_handler(cli_handler, action_handler):
 async def test_async_wait_for_action_update_1(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
 
-    def handle_action(action_id, request, cli_handler):
+    def handle_action(action_id, request):
         cli_handler.update_action(action_id, {"foo": "in-progress"})
 
     action_handler.can_handle.return_value = True
@@ -217,7 +217,7 @@ async def test_async_wait_for_action_update_1(get_utc_now, cli_handler, action_h
 async def test_async_wait_for_action_update_2(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
 
-    def handle_action(action_id, request, cli_handler):
+    def handle_action(action_id, request):
         time.sleep(1)
         cli_handler.complete_action(action_id, {"foo": "done"})
 
@@ -254,7 +254,7 @@ async def test_async_wait_for_action_update_2(get_utc_now, cli_handler, action_h
 async def test_async_wait_for_action_update_3(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
 
-    def handle_action(action_id, request, cli_handler):
+    def handle_action(action_id, request):
         pass
 
     action_handler.can_handle.return_value = True
