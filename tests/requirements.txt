@@ -1,0 +1,5 @@
+pytest==8.3.4
+pytest-asyncio==0.25.0
+coverage==7.6.10
+# you may need to modify the path below
+-e /Users/shizhong/projects/webcli
