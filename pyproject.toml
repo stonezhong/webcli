@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "webcli2"
-version = "0.0.5"
+version = "0.0.6"
 authors = [
   { name="Stone Zhong", email="stone.zhong@gmail.com" },
 ]

@@ -39,6 +39,7 @@ def monitoring_client_to_str(monitoring_client:Optional["ActionMonitoringClient"
 
 class ActionHandler(ABC):
     cli_handler: "CLIHandler" = None
+    require_shutdown: Optional[bool] = None
 
     # can you handle this request?
     @abstractmethod
@@ -46,10 +47,19 @@ class ActionHandler(ABC):
         pass # pragma: no cover
 
     def startup(self, cli_handler: "CLIHandler"):
+        assert self.require_shutdown is None
+        assert self.cli_handler is None
+
+        self.require_shutdown = False
         self.cli_handler = cli_handler
 
+    @abstractmethod
     def shutdown(self):
-        pass # pragma: no cover
+        # assert self.require_shutdown == False
+        # assert self.cli_handler is not None
+
+        # self.cli_handler = None
+        # self.require_shutdown = None
 
     @abstractmethod
     def handle(self, action_id:int, request:Any):
