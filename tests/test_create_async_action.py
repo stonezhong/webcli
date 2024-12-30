@@ -12,12 +12,12 @@ from unittest.mock import patch, ANY, MagicMock
 import pytest
 import pytest_asyncio
 
-from webcli2 import CLIHandler, AsyncActionHandler, AsyncActionOpStatus
-from webcli2.db_models import create_all_tables, DBAsyncAction
+from webcli2 import CLIHandler, ActionHandler, CLIHandlerStatus
+from webcli2.db_models import create_all_tables, DBAction
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-class MyTestActionHandler(AsyncActionHandler):
+class MyTestActionHandler(ActionHandler):
     def can_handle(self, request:Any) -> bool:
         return True
 
@@ -62,8 +62,8 @@ async def cli_handler_with_scavenger(db_engine, action_handler):
 
 ################################################################################
 # Scenario: Create async action basic case
-#     calling async_start_async_action from async function
-#     Create an async action
+#     calling async_start_action from async function
+#     Create an action
 #     with a handler that can handle it
 #     the handler does nothing
 ################################################################################
@@ -72,11 +72,11 @@ async def cli_handler_with_scavenger(db_engine, action_handler):
 async def test_async_start_async_action_with_dummy_handler(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
     action_handler.can_handle.return_value = True
-    status, async_action = await cli_handler.async_start_async_action({"foo":1})
-    assert status ==  AsyncActionOpStatus.OK
+    status, async_action = await cli_handler.async_start_action({"foo":1})
+    assert status ==  CLIHandlerStatus.OK
 
     with Session(cli_handler.db_engine) as session:
-        db_async_actions = session.query(DBAsyncAction).all()
+        db_async_actions = session.query(DBAction).all()
         assert len(db_async_actions) == 1
         db_async_action = db_async_actions[0]
 
@@ -104,8 +104,8 @@ async def test_async_start_async_action_with_dummy_handler(get_utc_now, cli_hand
 
 ################################################################################
 # Scenario: Create async action basic case
-#     calling start_async_action (non async way)
-#     Create an async action
+#     calling start_action (non async way)
+#     Create an action
 #     with a handler that can handle it
 #     the handler does nothing
 ################################################################################
@@ -114,11 +114,11 @@ async def test_async_start_async_action_with_dummy_handler(get_utc_now, cli_hand
 async def test_start_async_action_with_dummy_handler(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
     action_handler.can_handle.return_value = True
-    status, async_action = cli_handler.start_async_action({"foo":1})
-    assert status ==  AsyncActionOpStatus.OK
+    status, async_action = cli_handler.start_action({"foo":1})
+    assert status ==  CLIHandlerStatus.OK
 
     with Session(cli_handler.db_engine) as session:
-        db_async_actions = session.query(DBAsyncAction).all()
+        db_async_actions = session.query(DBAction).all()
         assert len(db_async_actions) == 1
         db_async_action = db_async_actions[0]
 
@@ -147,52 +147,52 @@ async def test_start_async_action_with_dummy_handler(get_utc_now, cli_handler, a
 
 ################################################################################
 # Scenario: Create async action basic case
-#     Create an async action
+#     Create an action
 #     no handler can handle it
 ################################################################################
 @pytest.mark.asyncio
 async def test_async_start_async_action_with_no_handler(cli_handler, action_handler):
     action_handler.can_handle.return_value = False
-    status, async_action = await cli_handler.async_start_async_action({"foo":1})
-    assert status ==  AsyncActionOpStatus.NO_HANDLER
+    status, async_action = await cli_handler.async_start_action({"foo":1})
+    assert status ==  CLIHandlerStatus.NO_HANDLER
     assert async_action is None
 
 ################################################################################
 # Scenario: Create async action basic case
-#     Create an async action
+#     Create an action
 #     no handler can handle it
 ################################################################################
 @pytest.mark.asyncio
 async def test_start_async_action_with_no_handler(cli_handler, action_handler):
     action_handler.can_handle.return_value = False
-    status, async_action = cli_handler.start_async_action({"foo":1})
-    assert status ==  AsyncActionOpStatus.NO_HANDLER
+    status, async_action = cli_handler.start_action({"foo":1})
+    assert status ==  CLIHandlerStatus.NO_HANDLER
     assert async_action is None
 
 ####################################################################################
 # Scenario: 
-# - Create an async action
+# - Create an action
 # - the action handler update the progress of the async action
-# - caller call async_wait_for_update_async_action to wait on action's update
+# - caller call async_wait_for_action_update to wait on action's update
 ####################################################################################
 @patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
-async def test_async_wait_for_update_async_action_1(get_utc_now, cli_handler, action_handler):
+async def test_async_wait_for_action_update_1(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
 
     def handle_action(action_id, request, cli_handler):
-        cli_handler.update_progress_async_action(action_id, {"foo": "in-progress"})
+        cli_handler.update_action(action_id, {"foo": "in-progress"})
 
     action_handler.can_handle.return_value = True
     action_handler.handle = MagicMock(wraps=handle_action)
-    status, async_action = await cli_handler.async_start_async_action({"foo":1})
-    assert status == AsyncActionOpStatus.OK
+    status, async_action = await cli_handler.async_start_action({"foo":1})
+    assert status == CLIHandlerStatus.OK
 
-    status, async_action = await cli_handler.async_wait_for_update_async_action(async_action.id, 10)
-    assert status == AsyncActionOpStatus.OK
+    status, async_action = await cli_handler.async_wait_for_action_update(async_action.id, 10)
+    assert status == CLIHandlerStatus.OK
 
     with Session(cli_handler.db_engine) as session:
-        db_async_actions = session.query(DBAsyncAction).all()
+        db_async_actions = session.query(DBAction).all()
         assert len(db_async_actions) == 1
         db_async_action = db_async_actions[0]
 
@@ -208,29 +208,29 @@ async def test_async_wait_for_update_async_action_1(get_utc_now, cli_handler, ac
 
 ####################################################################################
 # Scenario: 
-# - Create an async action
+# - Create an action
 # - the action handler complete the action after 1 second
-# - caller call async_wait_for_update_async_action to wait on action's update
+# - caller call async_wait_for_action_update to wait on action's update
 ####################################################################################
 @patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
-async def test_async_wait_for_update_async_action_2(get_utc_now, cli_handler, action_handler):
+async def test_async_wait_for_action_update_2(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
 
     def handle_action(action_id, request, cli_handler):
         time.sleep(1)
-        cli_handler.complete_async_action(action_id, {"foo": "done"})
+        cli_handler.complete_action(action_id, {"foo": "done"})
 
     action_handler.can_handle.return_value = True
     action_handler.handle = MagicMock(wraps=handle_action)
-    status, async_action = await cli_handler.async_start_async_action({"foo":1})
-    assert status == AsyncActionOpStatus.OK
+    status, async_action = await cli_handler.async_start_action({"foo":1})
+    assert status == CLIHandlerStatus.OK
 
-    status, async_action = await cli_handler.async_wait_for_update_async_action(async_action.id, 10)
-    assert status == AsyncActionOpStatus.OK
+    status, async_action = await cli_handler.async_wait_for_action_update(async_action.id, 10)
+    assert status == CLIHandlerStatus.OK
 
     with Session(cli_handler.db_engine) as session:
-        db_async_actions = session.query(DBAsyncAction).all()
+        db_async_actions = session.query(DBAction).all()
         assert len(db_async_actions) == 1
         db_async_action = db_async_actions[0]
 
@@ -245,13 +245,13 @@ async def test_async_wait_for_update_async_action_2(get_utc_now, cli_handler, ac
 
 ####################################################################################
 # Scenario: 
-# - Create an async action
+# - Create an action
 # - the action handler does nothing
-# - caller call async_wait_for_update_async_action to wait on action's update and timeout
+# - caller call async_wait_for_action_update to wait on action's update and timeout
 ####################################################################################
 @patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
-async def test_async_wait_for_update_async_action_3(get_utc_now, cli_handler, action_handler):
+async def test_async_wait_for_action_update_3(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
 
     def handle_action(action_id, request, cli_handler):
@@ -259,11 +259,11 @@ async def test_async_wait_for_update_async_action_3(get_utc_now, cli_handler, ac
 
     action_handler.can_handle.return_value = True
     action_handler.handle = MagicMock(wraps=handle_action)
-    status, async_action = await cli_handler.async_start_async_action({"foo":1})
-    assert status == AsyncActionOpStatus.OK
+    status, async_action = await cli_handler.async_start_action({"foo":1})
+    assert status == CLIHandlerStatus.OK
 
-    status, async_action = await cli_handler.async_wait_for_update_async_action(async_action.id, 10)
-    assert status == AsyncActionOpStatus.TIMEDOUT
+    status, async_action = await cli_handler.async_wait_for_action_update(async_action.id, 10)
+    assert status == CLIHandlerStatus.TIMEDOUT
     assert async_action is None
 
 ####################################################################################

@@ -6,14 +6,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ._common import DBModelBase
 
 #############################################################################
-# client create an async-action
-# once created, is_completed is False
-# before action is completed, client can update progress, every update
-# will increase version
-# until the action is completed, the version is going to update again
-# the  initial version is always 0
+# Represent a DB layer action
+# ---------------------------------------------------------------------------
+# Once an action is created, is_completed is set to False
+# Create an action:
+#     It set is_completed to False, set request field
+# Update an action:
+#     It set the updated_at and progress field
+# Complete an action:
+#     It set is_completed to True, set response field
 #############################################################################
-class DBAsyncAction(DBModelBase):
+class DBAction(DBModelBase):
     """
     Represent an async action
     """

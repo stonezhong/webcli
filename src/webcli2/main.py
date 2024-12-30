@@ -3,8 +3,7 @@ logger = logging.getLogger("webcli")
 
 from typing import Dict, Tuple, Any, List, Optional
 from datetime import datetime, timezone
-from asyncio import Event, get_event_loop, AbstractEventLoop, wait_for, get_running_loop
-import asyncio
+from asyncio import Event, get_event_loop, AbstractEventLoop, wait_for, TimeoutError
 import enum
 from concurrent.futures import ThreadPoolExecutor
 import threading
@@ -15,8 +14,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from webcli2.db_models import DBAsyncAction
-from webcli2.models import AsyncAction
+from webcli2.db_models import DBAction
+from webcli2.models import Action
 
 from abc import ABC, abstractmethod
 
@@ -30,13 +29,15 @@ from abc import ABC, abstractmethod
 def get_utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-def async_action_to_str(async_action:Optional[AsyncAction]) -> str:
-    return "None" if async_action is None else f"AsyncAction(id={async_action.id})"
+# this is only for logging
+def action_to_str(action:Optional[Action]) -> str:
+    return "None" if action is None else f"Action(id={action.id})"
 
-def monitoring_client_to_str(monitoring_client:Optional["AsyncActionMonitoringClient"]) -> str:
-    return "None" if monitoring_client is None else f"AsyncActionMonitoringClient(id={monitoring_client.id})"
+# this is only for logging
+def monitoring_client_to_str(monitoring_client:Optional["ActionMonitoringClient"]) -> str:
+    return "None" if monitoring_client is None else f"ActionMonitoringClient(id={monitoring_client.id})"
 
-class AsyncActionHandler(ABC):
+class ActionHandler(ABC):
     # can you handle this request?
     @abstractmethod
     def can_handle(self, request:Any) -> bool:
@@ -45,20 +46,21 @@ class AsyncActionHandler(ABC):
     @abstractmethod
     def handle(self, action_id:int, request:Any, cli_handler: "CLIHandler"):
         # to complete the action, you can call
-        # cli_handler.complete_async_action(None, action_id, ...)
+        # cli_handler.complete_action(None, action_id, ...)
         #
         # to update the action, you can call
-        # cli_handler.update_progress_async_action(None, action_id:int, ...):
+        # cli_handler.update_action(None, action_id:int, ...):
         pass # pragma: no cover
 
-class AsyncActionOpStatus(enum.Enum):
-    OK = 0
-    DB_FAILED = 1               # database failure
-    NOT_FOUND = 2               # you cannot update, monior, complete an action since the action does not exist
-    ACTION_COMPLETED = 3        # you cannot update an action since the AsyncActionInfoaction has been completed
-    TIMEDOUT = 4
-    SHUTDOWN_IN_PROGRESS = 5    # we are shutting down
-    NO_HANDLER = 6              # we cannot find a handler to handle this action
+# Status code for CLIHandler API calls
+class CLIHandlerStatus(enum.Enum):
+    OK                      = 0
+    DB_FAILED               = 1 # database failure
+    NOT_FOUND               = 2 # you cannot update, monior, complete an action since the action does not exist
+    ACTION_COMPLETED        = 3 # you cannot update an action since the action has been completed
+    TIMEDOUT                = 4 # wait on an action to completed timed out
+    SHUTDOWN_IN_PROGRESS    = 5 # we cannot service you since we are shutting down
+    NO_HANDLER              = 6 # we cannot find a handler to handle this action
 
 #############################################################
 # Tracks an asynchronous call
@@ -86,49 +88,47 @@ class AsyncCall:
         return self.return_value
 
 #############################################################
-# Tracking the update of an AsyncAction of a given client
+# Tracking the update of an Action of a given client
 #############################################################
-class AsyncActionMonitoringClient:
+class ActionMonitoringClient:
     id: uuid.UUID # an unique ID
-    async_action: AsyncAction
+    action: Action
     event: Event
     pending_removal: bool
 
-    def __init__(self, async_action:AsyncAction):
+    def __init__(self, action:Action):
         self.id = uuid.uuid4()
         self.event = Event()
-        self.async_action = async_action
+        self.action = action
         self.pending_removal = False
 
-    async def async_wait_for_update(self, timeout:float) -> Optional[AsyncAction]:
+    async def async_wait_for_update(self, timeout:float) -> Optional[Action]:
         #############################################################
-        # wait for the AsyncAction to be updated or timed out
-        # each AsyncActionMonitoringClient can only be waited once
+        # wait for the Action to be updated or timed out
+        # each ActionMonitoringClient can only be waited once
         #############################################################
-        ret = None
         try:
-            await asyncio.wait_for(self.event.wait(), timeout=timeout)
-            ret = self.async_action
-        except asyncio.TimeoutError:
+            await wait_for(self.event.wait(), timeout=timeout)
+            return self.action
+        except TimeoutError:
             self.pending_removal = True
-            ret = None
-        return ret
+            return None
 
 #############################################################
-# Tracking the update of an AsyncAction
+# Tracking the update of an Action
 #############################################################
-class AsyncActionInfo:
-    async_action: AsyncAction
-    monitoring_client_dict: Dict[uuid.UUID, AsyncActionMonitoringClient]
+class ActionInfo:
+    action: Action
+    monitoring_client_dict: Dict[uuid.UUID, ActionMonitoringClient]
     lock: threading.Lock
 
-    def __init__(self, async_action:AsyncAction):
-        self.async_action = async_action
+    def __init__(self, action:Action):
+        self.action = action
         self.monitoring_client_dict = {}
         self.lock = threading.Lock()
     
-    def create_client_unsafe(self) -> AsyncActionMonitoringClient:
-        moniroing_client = AsyncActionMonitoringClient(self.async_action)
+    def create_client(self) -> ActionMonitoringClient:
+        moniroing_client = ActionMonitoringClient(self.action)
         self.monitoring_client_dict[moniroing_client.id] = moniroing_client
         return moniroing_client
 
@@ -139,21 +139,21 @@ class CLIHandler:
     scavenger_thread: Optional[threading.Thread]
     event_loop: Optional[AbstractEventLoop]
     lock: threading.Lock
-    async_action_info_dict: Dict[int, AsyncActionInfo] # key is action ID, value is AsyncActionInfo
+    action_info_dict: Dict[int, ActionInfo] # key is action ID
     require_shutdown: Optional[bool]
-    action_handlers: List[AsyncActionHandler]
+    action_handlers: List[ActionHandler]
     run_scavenger: bool
 
-    def __init__(self, *, db_engine:Engine, debug:bool=False, action_handlers:List[AsyncActionHandler], run_scavenger=False):
+    def __init__(self, *, db_engine:Engine, debug:bool=False, action_handlers:List[ActionHandler], run_scavenger=False):
         self.debug = debug
         self.db_engine = db_engine
         self.executor = None
         self.scavenger_thread = None
         self.event_loop = None
         self.lock = threading.Lock()
-        self.async_action_info_dict = {}
+        self.action_info_dict = {}
         self.require_shutdown = None
-        self.action_handlers = action_handlers
+        self.action_handlers = action_handlers[:]
         self.run_scavenger = run_scavenger
 
     def scavenger(self):
@@ -165,8 +165,9 @@ class CLIHandler:
         logger.debug("scavenger: exit")
 
     def startup(self):
+        log_prefix = "CLIHandler.startup"
         # TODO: maybe I should limit the thread number
-        logger.debug("CLIHandler.startup: enter")
+        logger.debug(f"{log_prefix}: enter")
         self.require_shutdown = False
         self.executor = ThreadPoolExecutor()
 
@@ -174,19 +175,21 @@ class CLIHandler:
         if self.run_scavenger:
             self.scavenger_thread = threading.Thread(target=self.scavenger, daemon=True)
             self.scavenger_thread.start()
+
         self.event_loop = get_event_loop()
 
-        # load pending AsyncAction that is stored in database
+        # load pending Action that is stored in database
         with Session(self.db_engine) as session:
-            for db_async_action in session.query(DBAsyncAction).filter(DBAsyncAction.is_completed == False).all():
-                self.async_action_info_dict[db_async_action.id] = AsyncActionInfo(AsyncAction.create(db_async_action))
+            for db_action in session.query(DBAction).filter(DBAction.is_completed == False).all():
+                self.action_info_dict[db_action.id] = ActionInfo(Action.create(db_action))
 
-        logger.debug(f"CLIHandler.startup: {len(self.async_action_info_dict)} pending actions loaded from db")
-        logger.debug("CLIHandler.startup: exit")
+        logger.debug(f"{log_prefix}: {len(self.action_info_dict)} pending actions loaded from db")
+        logger.debug(f"{log_prefix}: enter")
 
     def shutdown(self):
         # TODO: what if some request are stuck, shall we hang on shutdown?
         logger.debug("CLIHandler.shutdown: enter")
+        assert self.require_shutdown == False
         self.require_shutdown = True
         if self.scavenger_thread is not None:
             self.scavenger_thread.join()
@@ -202,97 +205,96 @@ class CLIHandler:
         # the method is responsible to finish the async call, optionally with return_value
         return await v.async_await_return()
     
-    async def async_start_async_action(self, request:Any) -> Tuple[AsyncActionOpStatus, Optional[AsyncAction]]:
-        logger.debug("CLIHandler:async_start_async_action: enter")
-        async_action_op_status, async_action = await self._async_call(self.start_async_action, request)
-        logger.debug(f"CLIHandler:async_start_async_action: exit, status={async_action_op_status}, async_action={async_action_to_str(async_action)}")
-        return async_action_op_status, async_action
+    async def async_start_action(self, request:Any) -> Tuple[CLIHandlerStatus, Optional[Action]]:
+        log_prefix = "CLIHandler:async_start_action"
+        logger.debug(f"{log_prefix}: enter")
+        status, action = await self._async_call(self.start_action, request)
+        logger.debug(f"{log_prefix}: exit, status={status}, action={action_to_str(action)}")
+        return status, action
 
-    async def async_update_progress_async_action(self, action_id:int, progress:Any) -> AsyncActionOpStatus:
-        logger.debug(f"CLIHandler:async_update_progress_async_action: enter, action_id={action_id}")
-        r = await self._async_call(self.update_progress_async_action, action_id, progress)
-        logger.debug(f"CLIHandler:async_update_progress_async_action: exit, status={r}")
+    async def async_update_action(self, action_id:int, progress:Any) -> CLIHandlerStatus:
+        log_prefix = "CLIHandler:async_update_action"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        r = await self._async_call(self.update_action, action_id, progress)
+        logger.debug(f"{log_prefix}: exit, status={r}")
         return r
 
-    async def async_complete_async_action(self, action_id:int, response:Any) -> AsyncActionOpStatus:
-        logger.debug(f"CLIHandler:async_complete_async_action: enter, action_id={action_id}")
-        r = await self._async_call(self.complete_async_action, action_id, response)
-        logger.debug(f"CLIHandler:async_complete_async_action: exit, status={r}")
+    async def async_complete_action(self, action_id:int, response:Any) -> CLIHandlerStatus:
+        log_prefix = "CLIHandler:async_complete_action"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        r = await self._async_call(self.complete_action, action_id, response)
+        logger.debug(f"{log_prefix}: exit, status={r}")
         return r
 
-    async def async_register_monitor_async_action(self, action_id:int) -> Tuple[AsyncActionOpStatus, Optional[AsyncActionMonitoringClient]]:
-        logger.debug(f"CLIHandler:async_register_monitor_async_action: enter, action_id={action_id}")
-        async_action_op_status, monitoring_client = await self._async_call(self.register_monitor_async_action, action_id)
-        logger.debug(f"CLIHandler:async_register_monitor_async_action: exit, status={async_action_op_status}, monitoring_client={monitoring_client_to_str(monitoring_client)}")
-        return async_action_op_status, monitoring_client
+    async def async_register_monitor_action(self, action_id:int) -> Tuple[CLIHandlerStatus, Optional[ActionMonitoringClient]]:
+        log_prefix = "CLIHandler:async_register_monitor_action"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        status, monitoring_client = await self._async_call(self.register_monitoring_client, action_id)
+        logger.debug(f"{log_prefix}: exit, status={status}, monitoring_client={monitoring_client_to_str(monitoring_client)}")
+        return status, monitoring_client
     
     async def async_remove_monitoring_client(self, action_id:int, moniroting_client_id: uuid.UUID):
-        logger.debug(f"CLIHandler:async_remove_monitoring_client: enter, action_id={action_id}, moniroting_client_id={moniroting_client_id}")
+        log_prefix = "CLIHandler:async_remove_monitoring_client"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}, moniroting_client_id={moniroting_client_id}")
         r = await self._async_call(self.remove_monitoring_client, action_id, moniroting_client_id)
-        logger.debug("CLIHandler:async_remove_monitoring_client: exit")
+        logger.debug(f"{log_prefix}: exit")
         return r
 
-    async def async_wait_for_update_async_action(self, action_id:int, timeout:float) -> Tuple[AsyncActionOpStatus, Optional[AsyncAction]]:
-        logger.debug(f"CLIHandler:async_wait_for_update_async_action: enter, action_id={action_id}, timeout={timeout}")
+    async def async_wait_for_action_update(self, action_id:int, timeout:float) -> Tuple[CLIHandlerStatus, Optional[Action]]:
+        log_prefix = "CLIHandler.async_wait_for_action_update"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}, timeout={timeout}")
         
-        async_action_op_status, monitoring_client = await self.async_register_monitor_async_action(action_id)
-        if async_action_op_status == AsyncActionOpStatus.NOT_FOUND:
-            logger.debug(f"CLIHandler:async_wait_for_update_async_action: async action with id of {action_id} is not found")
-            logger.debug(f"CLIHandler:async_wait_for_update_async_action: exit, status={async_action_op_status}, async_action=None")
-            return async_action_op_status, None
-        
-        if async_action_op_status == AsyncActionOpStatus.ACTION_COMPLETED:
-            logger.debug(f"CLIHandler:async_wait_for_update_async_action: async action with id of {action_id} is already completed")
-            logger.debug(f"CLIHandler:async_wait_for_update_async_action: exit, status={async_action_op_status}, async_action=None")
-            return async_action_op_status, None
+        status, monitoring_client = await self.async_register_monitor_action(action_id)
+        if status in (CLIHandlerStatus.NOT_FOUND, CLIHandlerStatus.ACTION_COMPLETED):
+            logger.debug(f"{log_prefix}: exit, status={status}, action=None")
+            return status, None
 
-        assert async_action_op_status == AsyncActionOpStatus.OK
-
-        async_action = await monitoring_client.async_wait_for_update(timeout)
+        assert status == CLIHandlerStatus.OK
+        action = await monitoring_client.async_wait_for_update(timeout)
 
         try:
-            if async_action is None:
-                r = (AsyncActionOpStatus.TIMEDOUT, None)
-                logger.debug(f"CLIHandler:async_wait_for_update_async_action: exit, status={AsyncActionOpStatus.TIMEDOUT}, async_action=None")
-            else:
-                r = (AsyncActionOpStatus.OK, async_action)
-                logger.debug(f"CLIHandler:async_wait_for_update_async_action: exit, status={AsyncActionOpStatus.OK}, async_action={async_action_to_str(async_action)}")
-            return r
+            status = CLIHandlerStatus.TIMEDOUT if action is None else CLIHandlerStatus.OK
+            logger.debug(f"{log_prefix}: exit, status={status}, action={action_to_str(action)}")
+            return status, action
         finally:
-            await self.async_remove_monitoring_client(monitoring_client.async_action.id, monitoring_client.id)
+            await self.async_remove_monitoring_client(monitoring_client.action.id, monitoring_client.id)
 
 
-    def start_async_action_unsafe(
+    def start_action_unsafe(
         self, 
         request:Any, 
         async_call:Optional[AsyncCall]=None
-    ) -> Tuple[AsyncActionOpStatus, Optional[AsyncAction]]:
+    ) -> Tuple[CLIHandlerStatus, Optional[Action]]:
+        log_prefix = "CLIHandler.start_action_unsafe"
         #############################################################
-        # Start an async action
+        # Start an action
         #############################################################
-        logger.debug("CLIHandler.start_async_action_unsafe: enter")
+        logger.debug("{log_prefix}: enter")
         if self.require_shutdown:
+            rs = CLIHandlerStatus.SHUTDOWN_IN_PROGRESS
             if async_call is not None:
-                async_call.finish(return_value=(AsyncActionOpStatus.SHUTDOWN_IN_PROGRESS, None))
-            logger.debug(f"CLIHandler.start_async_action_unsafe: exit, status={AsyncActionOpStatus.SHUTDOWN_IN_PROGRESS}, async_action=None")
-            return AsyncActionOpStatus.SHUTDOWN_IN_PROGRESS, None
+                async_call.finish(return_value=(rs, None))
+            logger.debug(f"{log_prefix}: exit, status={rs}, action=None")
+            return rs, None
         
         found_action_handler = None
         for action_handler in self.action_handlers:
             if action_handler.can_handle(request):
                 found_action_handler = action_handler
+                logger.debug(f"{log_prefix}: found action handler, it is {found_action_handler}")
                 break
         if found_action_handler is None:
+            rs = CLIHandlerStatus.NO_HANDLER
             if async_call is not None:
-                async_call.finish(return_value=(AsyncActionOpStatus.NO_HANDLER, None))
-            logger.debug(f"CLIHandler.start_async_action_unsafe: exit, status={AsyncActionOpStatus.NO_HANDLER}, async_action=None")
-            return AsyncActionOpStatus.NO_HANDLER, None
+                async_call.finish(return_value=(rs, None))
+            logger.debug(f"{log_prefix}: exit, status={rs}, action=None")
+            return rs, None
 
         # persist async action
         try:
             with Session(self.db_engine) as session:
                 with session.begin():
-                    db_async_action = DBAsyncAction(
+                    db_action = DBAction(
                         is_completed = False,
                         created_at = get_utc_now(),
                         completed_at = None,
@@ -301,259 +303,289 @@ class CLIHandler:
                         response = None,
                         progress = None
                     )
-                    session.add(db_async_action)
-
-                async_action = AsyncAction.create(db_async_action)
+                    session.add(db_action)
+                action = Action.create(db_action)
         except SQLAlchemyError:
-            logger.error("CLIHandler.start_async_action_unsafe: unable to update database for async action", exc_info=True)
+            logger.error(f"{log_prefix}: unable to update database for async action", exc_info=True)
+            rs = CLIHandlerStatus.DB_FAILED
             if async_call is not None:
-                async_call.finish(return_value=(AsyncActionOpStatus.DB_FAILED, None))
-            logger.debug(f"CLIHandler.start_async_action_unsafe: exit, async_action_op_status={AsyncActionOpStatus.DB_FAILED}, async_action={None}")
-            return AsyncActionOpStatus.DB_FAILED, None
+                async_call.finish(return_value=(rs, None))
+            logger.debug(f"{log_prefix}: exit, status=rs, action=None")
+            return rs, None
 
         with self.lock:
             # for new action, it should not be in database
-            assert async_action.id not in self.async_action_info_dict
-            self.async_action_info_dict[async_action.id] = AsyncActionInfo(async_action)
-            if async_call is not None:
-                async_call.finish(return_value=(AsyncActionOpStatus.OK, async_action))
-            # let handler to work in the thread pool
-            logger.debug(f"CLIHandler.start_async_action_unsafe: invoking handle in thread pool, handler {found_action_handler.handle}")
-            self.executor.submit(found_action_handler.handle, async_action.id, request, self)
-            logger.debug(f"CLIHandler.start_async_action_unsafe: exit, async_action_op_status={AsyncActionOpStatus.OK}, async_action={async_action_to_str(async_action)})")
-            return AsyncActionOpStatus.OK, async_action
+            assert action.id not in self.action_info_dict
+            self.action_info_dict[action.id] = ActionInfo(action)
 
-    def start_async_action(
+            logger.debug(f"{log_prefix}: invoking handle in thread pool, handler {found_action_handler.handle}")
+            self.executor.submit(found_action_handler.handle, action.id, request, self)
+
+            rs = CLIHandlerStatus.OK
+            if async_call is not None:
+                async_call.finish(return_value=(rs, action))
+            # let handler to work in the thread pool
+            logger.debug(f"{log_prefix}: exit, status={rs}, action={action_to_str(action)})")
+            return rs, action
+
+    def start_action(
         self, 
         request:Any, 
         async_call:Optional[AsyncCall]=None
-    ) -> Tuple[AsyncActionOpStatus, Optional[AsyncAction]]:
+    ) -> Tuple[CLIHandlerStatus, Optional[Action]]:
         if self.debug:
             try:
-                return self.start_async_action_unsafe(request, async_call=async_call)
+                return self.start_action_unsafe(request, async_call=async_call)
             except:
                 logger.error("CLIHandler.start_async_action_unsafe: exception captured", exc_info=True)
                 raise
         else:
-            return self.start_async_action_unsafe(request, async_call=async_call)
+            return self.start_action_unsafe(request, async_call=async_call)
 
 
-    def update_progress_async_action_unsafe(
+    def update_action_unsafe(
         self, 
         action_id:int, 
         progress:Any, 
         async_call:Optional[AsyncCall]=None
-    ) -> AsyncActionOpStatus:
+    ) -> CLIHandlerStatus:
         #############################################################
         # Update an async action's progress
         #############################################################
-        logger.debug(f"CLIHandler.update_progress_async_action_unsafe: enter, action_id={action_id}")
-        async_action_info = None
+        log_prefix = "CLIHandler:update_action_unsafe"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        action_info = None
 
-        # persist async action
+        # persist action
         try:
             with Session(self.db_engine) as session:
                 with session.begin():
-                    db_async_action = session.get(DBAsyncAction, action_id)
-                    if db_async_action is None:
+                    db_action:DBAction = session.get(DBAction, action_id)
+                    if db_action is None:
+                        status = CLIHandlerStatus.NOT_FOUND
                         if async_call is not None:
-                            async_call.finish(return_value=AsyncActionOpStatus.NOT_FOUND)
-                        logger.debug(f"CLIHandler.update_progress_async_action_unsafe: exit, status={AsyncActionOpStatus.NOT_FOUND}")
-                        return AsyncActionOpStatus.NOT_FOUND
+                            async_call.finish(return_value=status)
+                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        return status
                     
-                    if db_async_action.is_completed:
+                    if db_action.is_completed:
+                        status = CLIHandlerStatus.ACTION_COMPLETED
                         if async_call is not None:
-                            async_call.finish(return_value=AsyncActionOpStatus.ACTION_COMPLETED)
-                        logger.debug(f"CLIHandler.update_progress_async_action_unsafe: exit, status={AsyncActionOpStatus.ACTION_COMPLETED}")
-                        return AsyncActionOpStatus.ACTION_COMPLETED
+                            async_call.finish(return_value=status)
+                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        return status
                     
-                    db_async_action.updated_at = get_utc_now()
-                    db_async_action.progress = progress
-                    session.add(db_async_action)
-                async_action = AsyncAction.create(db_async_action)
+                    db_action.updated_at = get_utc_now()
+                    db_action.progress = progress
+                    session.add(db_action)
+                action = Action.create(db_action)
         except SQLAlchemyError:
-            logger.error(f"CLIHandler.update_progress_async_action_unsafe: unable to update database for async action with id of {action_id}", exc_info=True)
+            logger.error(f"{log_prefix}: unable to update database for {action_to_str(action)}", exc_info=True)
+            status = CLIHandlerStatus.DB_FAILED
             if async_call is not None:
-                async_call.finish(return_value=AsyncActionOpStatus.DB_FAILED)
-            logger.debug("CLIHandler.update_progress_async_action_unsafe: exit, status={AsyncActionOpStatus.DB_FAILED}")
-            return AsyncActionOpStatus.DB_FAILED
+                async_call.finish(return_value=status)
+            logger.debug("{log_prefix}: exit, status={status}")
+            return status
 
-        logger.debug(f"CLIHandler.update_progress_async_action_unsafe: async action with id of {action_id} is updated in database")
+        logger.debug(f"{log_prefix}: {action_to_str(action)} is updated in database")
 
         try:
             assert not self.lock.locked()
             self.lock.acquire()   # this is an expensive global lock
-            async_action_info = self.async_action_info_dict[action_id]
+            action_info = self.action_info_dict[action_id]
 
-            assert not async_action_info.lock.locked()
-            async_action_info.lock.acquire()  # this lock is per async action, which is not expensive
+            assert not action_info.lock.locked()
+            action_info.lock.acquire()  # this lock is per async action, which is not expensive
             self.lock.release()
 
             # handler lock: released
-            # async_action_info: locked
-            async_action_info.async_action.progress = progress
-            for _, client in async_action_info.monitoring_client_dict.items():
+            # action_info: locked
+            action_info.action.progress = progress
+            action_info.action.updated_at = action.updated_at
+            for _, client in action_info.monitoring_client_dict.items():
                 if client.pending_removal:
-                    logger.debug(f"CLIHandler.update_progress_async_action_unsafe: not set event for monitoring client of id {client.id} since it is in pending removal mode")
+                    logger.debug(f"{log_prefix}: skip set event for {monitoring_client_to_str(client)} due to pending removal mode")
                 else:
-                    logger.debug(f"CLIHandler.update_progress_async_action_unsafe: set event for monitoring client of id {client.id}")
+                    logger.debug(f"{log_prefix}: set event for {monitoring_client_to_str(client)}")
                     client.pending_removal = True
                     self.event_loop.call_soon_threadsafe(client.event.set)
             
+            status = CLIHandlerStatus.OK
             if async_call is not None:
-                async_call.finish(return_value=AsyncActionOpStatus.OK)
-            logger.debug(f"CLIHandler.update_progress_async_action_unsafe: exit, status={AsyncActionOpStatus.OK}")
-            return AsyncActionOpStatus.OK
+                async_call.finish(return_value=status)
+            logger.debug(f"{log_prefix}: exit, status={status}")
+            return status
         finally:
             if self.lock.locked():
                 self.lock.release()
-            if async_action_info is not None and async_action_info.lock.locked():
-                async_action_info.lock.release()
+            if action_info is not None and action_info.lock.locked():
+                action_info.lock.release()
     
-    def update_progress_async_action(
+    def update_action(
         self, action_id:int, 
         progress:Any, 
         async_call:Optional[AsyncCall]=None
-    ) -> AsyncActionOpStatus:
+    ) -> CLIHandlerStatus:
         if self.debug:
             try:
-                return self.update_progress_async_action_unsafe(action_id, progress, async_call=async_call)
+                return self.update_action_unsafe(action_id, progress, async_call=async_call)
             except:
-                logger.error("CLIHandler.update_progress_async_action_unsafe: exception captured", exc_info=True)
+                logger.error("CLIHandler.update_action_unsafe: exception captured", exc_info=True)
                 raise
         else:
-            return self.update_progress_async_action_unsafe(action_id, progress, async_call=async_call)
+            return self.update_action_unsafe(action_id, progress, async_call=async_call)
 
 
-    def complete_async_action_unsafe(self, action_id:int, response:Any, async_call:Optional[AsyncCall]=None):
+    def complete_action_unsafe(
+        self, 
+        action_id:int, 
+        response:Any, 
+        async_call:Optional[AsyncCall]=None
+    ) -> CLIHandlerStatus:
         #############################################################
-        # Complete an async action's progress
+        # Complete an action's progress
         #############################################################
-        logger.debug(f"CLIHandler.complete_async_action_unsafe: enter, action_id={action_id}")
-        async_action_info = None
+        log_prefix = "CLIHandler:complete_action_unsafe"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        action_info = None
         
-        # persist async action
+        # persist action
         try:
             with Session(self.db_engine) as session:
                 with session.begin():
-                    db_async_action = session.get(DBAsyncAction, action_id)
-                    if db_async_action is None:
+                    db_action = session.get(DBAction, action_id)
+                    if db_action is None:
+                        status = CLIHandlerStatus.NOT_FOUND
                         if async_call is not None:
-                            async_call.finish(return_value=AsyncActionOpStatus.NOT_FOUND)
-                        logger.debug(f"CLIHandler.complete_async_action_unsafe: exit, status={AsyncActionOpStatus.NOT_FOUND}")
-                        return
+                            async_call.finish(return_value=status)
+                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        return status
 
-                    if db_async_action.is_completed:
+                    if db_action.is_completed:
+                        status = CLIHandlerStatus.ACTION_COMPLETED
                         if async_call is not None:
-                            async_call.finish(return_value=AsyncActionOpStatus.ACTION_COMPLETED)
-                        logger.debug(f"CLIHandler.complete_async_action_unsafe: exit, status={AsyncActionOpStatus.ACTION_COMPLETED}")
-                        return
+                            async_call.finish(return_value=status)
+                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        return status
 
-                    db_async_action.is_completed = True
-                    db_async_action.completed_at = get_utc_now()
-                    db_async_action.response = response
-                    session.add(db_async_action)
-                async_action = AsyncAction.create(db_async_action)
+                    db_action.is_completed = True
+                    db_action.completed_at = get_utc_now()
+                    db_action.response = response
+                    session.add(db_action)
+                action = Action.create(db_action)
         except SQLAlchemyError:
-            logger.error(f"CLIHandler.complete_async_action_unsafe: unable to update database for async action with id of {action_id}", exc_info=True)
+            logger.error(f"{log_prefix}: unable to update database for {action_to_str(action)}", exc_info=True)
+            status = CLIHandlerStatus.DB_FAILED
             if async_call is not None:
-                async_call.finish(return_value=AsyncActionOpStatus.DB_FAILED)
-            logger.debug(f"CLIHandler.complete_async_action_unsafe: exit, status={AsyncActionOpStatus.DB_FAILED}")
-            return
+                async_call.finish(return_value=status)
+            logger.debug(f"CLIHandler.complete_action_unsafe: exit, status={status}")
+            return status
+
+        logger.debug(f"{log_prefix}: {action_to_str(action)} is updated in database")
 
         try:
             assert not self.lock.locked()
             self.lock.acquire()   # this is an expensive global lock
-            async_action_info = self.async_action_info_dict[action_id]
+            action_info = self.action_info_dict[action_id]
 
-            assert not async_action_info.lock.locked()
-            async_action_info.lock.acquire()  # this lock is per async action, which is not expensive
+            assert not action_info.lock.locked()
+            action_info.lock.acquire()  # this lock is per async action, which is not expensive
             self.lock.release()
 
             # handler lock: released
-            # async_action_info: locked
-            async_action_info.async_action.is_completed = True
-            async_action_info.async_action.completed_at = async_action.completed_at
-            async_action_info.async_action.response = response
-            for _, client in async_action_info.monitoring_client_dict.items():
+            # action_info: locked
+            action_info.action.is_completed = True
+            action_info.action.completed_at = action.completed_at
+            action_info.action.response = response
+            for _, client in action_info.monitoring_client_dict.items():
                 if client.pending_removal:
-                    logger.debug(f"CLIHandler.complete_async_action_unsafe: not set event for monitoring client of id {client.id} since it is in pending removal mode")
+                    logger.debug(f"{log_prefix}: skip set event for {monitoring_client_to_str(client)} due to pending removal mode")
                 else:
-                    logger.debug(f"CLIHandler.complete_async_action_unsafe: set event for monitoring client of id {client.id}")
+                    logger.debug(f"{log_prefix}: set event for {monitoring_client_to_str(client)}")
                     client.pending_removal = True
                     self.event_loop.call_soon_threadsafe(client.event.set)
 
+            status = CLIHandlerStatus.OK
             if async_call is not None:
-                async_call.finish(return_value=AsyncActionOpStatus.OK)
-            logger.debug(f"CLIHandler.complete_async_action_unsafe: exit, status={AsyncActionOpStatus.OK}")
+                async_call.finish(return_value=status)
+            logger.debug(f"{log_prefix}: exit, status={status}")
+            return status
         finally:
             if self.lock.locked():
                 self.lock.release()
-            if async_action_info is not None and async_action_info.lock.locked():
-                async_action_info.lock.release()
+            if action_info is not None and action_info.lock.locked():
+                action_info.lock.release()
         
 
-    def complete_async_action(self, action_id:int, response:Any, async_call:Optional[AsyncCall]=None):
+    def complete_action(
+        self, 
+        action_id:int, 
+        response:Any, 
+        async_call:Optional[AsyncCall]=None
+    ) -> CLIHandlerStatus:
         if self.debug:
             try:
-                return self.complete_async_action_unsafe(action_id, response, async_call=async_call)
+                return self.complete_action_unsafe(action_id, response, async_call=async_call)
             except:
-                logger.error("CLIHandler.complete_async_action_unsafe: exception captured", exc_info=True)
+                logger.error("CLIHandler.complete_action_unsafe: exception captured", exc_info=True)
                 raise
         else:
-            return self.complete_async_action_unsafe(action_id, response, async_call=async_call)
+            return self.complete_action_unsafe(action_id, response, async_call=async_call)
 
     def remove_monitoring_client_unsafe(
         self, 
         action_id:int, 
         moniroting_client_id: uuid.UUID, 
         async_call:Optional[AsyncCall]=None
-    ):
+    ) -> CLIHandlerStatus:
         #############################################################
         # Remove a monitoring client that is no longer needed
         #############################################################
-        logger.debug(f"CLIHandler.remove_monitoring_client_unsafe: enter, action_id={action_id}, moniroting_client_id={moniroting_client_id}")
-        async_action_info = None
+        log_prefix = "CLIHandler.remove_monitoring_client_unsafe"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}, moniroting_client_id={moniroting_client_id}")
+        action_info = None
         
         try:
             assert not self.lock.locked()
             self.lock.acquire()
-            async_action_info = self.async_action_info_dict.get(action_id)
+            action_info = self.action_info_dict.get(action_id)
 
-            if async_action_info is None:
-                logger.warning(f"CLIHandler.remove_monitoring_client_unsafe: async action with id of {action_id} does not exist")
-                async_call.finish()
-                logger.debug("CLIHandler.remove_monitoring_client_unsafe: exit")
-                return
+            if action_info is None:
+                status = CLIHandlerStatus.NOT_FOUND
+                logger.warning(f"{log_prefix}: Action(id={action_id}) is not found!")
+                async_call.finish(return_value=status)
+                logger.debug(f"{log_prefix}: exit, status={status}")
+                return status
 
-            assert not async_action_info.lock.locked()
-            async_action_info.lock.acquire()  # this lock is per async action, which is not expensive
+            assert not action_info.lock.locked()
+            action_info.lock.acquire()  # this lock is per async action, which is not expensive
             self.lock.release()
 
-            monitoring_client = async_action_info.monitoring_client_dict.pop(moniroting_client_id, None)
+            monitoring_client = action_info.monitoring_client_dict.pop(moniroting_client_id, None)
             if monitoring_client is None:
-                logger.warning(f"CLIHandler.remove_monitoring_client_unsafe: async action with id of {action_id} does not have monitoring client of id {moniroting_client_id}")
-                async_call.finish()
-                logger.debug("CLIHandler.remove_monitoring_client_unsafe: exit")
-                return
+                logger.warning(f"{log_prefix}: Action(id={action_id}) does not have ActionMonitoringClient(id={moniroting_client_id})")
+                status = CLIHandlerStatus.NOT_FOUND
+                async_call.finish(return_value=status)
+                logger.debug(f"{log_prefix}: exit, status={status}")
+                return status
             
-            assert monitoring_client.async_action.id == action_id
-            async_call.finish()
-            logger.debug("CLIHandler.remove_monitoring_client_unsafe: exit")
+            assert monitoring_client.action.id == action_id
+            status = CLIHandlerStatus.OK
+            async_call.finish(return_value=status)
+            logger.debug(f"{log_prefix}: exit, status={status}")
+            return status
         finally:
             if self.lock.locked():
                 self.lock.release()
-            if async_action_info is not None and async_action_info.lock.locked():
-                async_action_info.lock.release()
-
-        logger.debug("CLIHandler.remove_monitoring_client_unsafe: exit")
+            if action_info is not None and action_info.lock.locked():
+                action_info.lock.release()
 
     def remove_monitoring_client(
         self, 
         action_id:int, 
         moniroting_client_id: uuid.UUID, 
         async_call:Optional[AsyncCall]=None
-    ):
+    ) -> CLIHandlerStatus:
         if self.debug:
             try:
                 return self.remove_monitoring_client_unsafe(action_id, moniroting_client_id, async_call=async_call)
@@ -564,59 +596,63 @@ class CLIHandler:
             return self.remove_monitoring_client_unsafe(action_id, moniroting_client_id, async_call=async_call)
 
 
-    def register_monitor_async_action_unsafe(
+    def register_monitoring_client_unsafe(
         self, 
         action_id:int, 
         async_call:Optional[AsyncCall]=None
-    ) -> Tuple[AsyncActionOpStatus, AsyncActionMonitoringClient]:
+    ) -> Tuple[CLIHandlerStatus, ActionMonitoringClient]:
         #############################################################
         # Register a client, so the client can monitor if the async action is
         # completed or any updates
         #############################################################
-        logger.debug(f"CLIHandler.register_monitor_async_action_unsafe: enter, action_id={action_id}")
-        async_action_info = None
+        log_prefix = "CLIHandler.register_monitoring_client_unsafe"
+        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        action_info = None
 
         try:
             assert not self.lock.locked()
             self.lock.acquire()   # this is an expensive global lock
-            async_action_info = self.async_action_info_dict.get(action_id)
-            if async_action_info is None:
-                async_call.finish(return_value=(AsyncActionOpStatus.NOT_FOUND, None))
-                logger.debug(f"CLIHandler.register_monitor_async_action_unsafe: exit, status={AsyncActionOpStatus.NOT_FOUND}, monitoring_client=None")
-                return AsyncActionOpStatus.NOT_FOUND, None
+            action_info = self.action_info_dict.get(action_id)
+            if action_info is None:
+                status = CLIHandlerStatus.NOT_FOUND
+                async_call.finish(return_value=(status, None))
+                logger.debug(f"{log_prefix}: exit, status={status}, monitoring_client=None")
+                return status, None
 
-            assert not async_action_info.lock.locked()
-            async_action_info.lock.acquire()  # this lock is per async action, which is not expensive
+            assert not action_info.lock.locked()
+            action_info.lock.acquire()  # this lock is per async action, which is not expensive
             self.lock.release()
 
             # handler lock: released
-            # async_action_info: locked
-            if async_action_info.async_action.is_completed:
-                async_call.finish(return_value=(AsyncActionOpStatus.ACTION_COMPLETED, None))
-                logger.debug(f"CLIHandler.register_monitor_async_action_unsafe: exit, status={AsyncActionOpStatus.ACTION_COMPLETED}, monitoring_client=None")
-                return AsyncActionOpStatus.ACTION_COMPLETED, None
+            # action_info: locked
+            if action_info.action.is_completed:
+                status = CLIHandlerStatus.ACTION_COMPLETED
+                async_call.finish(return_value=(status, None))
+                logger.debug(f"{log_prefix}: exit, status={status}, monitoring_client=None")
+                return status, None
             
-            monitoring_client = async_action_info.create_client_unsafe()
-            async_call.finish(return_value=(AsyncActionOpStatus.OK, monitoring_client))
-            logger.debug(f"CLIHandler.register_monitor_async_action_unsafe: exit, status={AsyncActionOpStatus.OK}, monitoring_client={monitoring_client_to_str(monitoring_client)}")
-            return AsyncActionOpStatus.OK, monitoring_client
+            status = CLIHandlerStatus.OK
+            monitoring_client = action_info.create_client()
+            async_call.finish(return_value=(status, monitoring_client))
+            logger.debug(f"{log_prefix}: exit, status={status}, monitoring_client={monitoring_client_to_str(monitoring_client)}")
+            return CLIHandlerStatus.OK, monitoring_client
         finally:
             if self.lock.locked():
                 self.lock.release()
-            if async_action_info is not None and async_action_info.lock.locked():
-                async_action_info.lock.release()
+            if action_info is not None and action_info.lock.locked():
+                action_info.lock.release()
 
-    def register_monitor_async_action(
+    def register_monitoring_client(
         self, 
         action_id:int, 
         async_call:Optional[AsyncCall]=None
-    ) -> Tuple[AsyncActionOpStatus, AsyncActionMonitoringClient]:
+    ) -> Tuple[CLIHandlerStatus, ActionMonitoringClient]:
         if self.debug:
             try:
-                return self.register_monitor_async_action_unsafe(action_id, async_call=async_call)
+                return self.register_monitoring_client_unsafe(action_id, async_call=async_call)
             except:
-                logger.error("CLIHandler.register_monitor_async_action: exception captured", exc_info=True)
+                logger.error("CLIHandler.register_monitoring_client_unsafe: exception captured", exc_info=True)
                 raise
         else:
-            return self.register_monitor_async_action_unsafe(action_id, async_call=async_call)
+            return self.register_monitoring_client_unsafe(action_id, async_call=async_call)
 

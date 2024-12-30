@@ -11,6 +11,10 @@ An async action, like the name implies, prepresent an async action.
 * Once an async action is created, before it is completed, you can update the progress information, it is stored in progress field. It is a JSON field.
 
 # APIs
+## ActionHandler
+* The <code>can_handler</code> method tells if a handler can handle an async action or not
+* The <code>handle</code> method actually handles the action
+
 ## CLIHandler
 <table>
     <tr><th>Name</th><th>Async</th><th>Description</th></tr>
@@ -22,9 +26,9 @@ An async action, like the name implies, prepresent an async action.
         YES
         </td>
         <td>
-            Create an async action. It returns a tuple of status and async action being created. status type is AsyncActionOpStatus.
-            If async action is created successfully, status will be <code>AsyncActionOpStatus.OK</code>, and an async action will be returned, the returned async action has already been saved to database.<br /><br />
-            CLIHandler rely on a list of customer defined handlers to handle the request. handler's <code>can_handle</code> method looks at the action's request and judge if it can handle it or not.<br /><br />
+            Create an async action. It returns a tuple of status and async action being created. status type is ActionOpStatus.
+            If async action is created successfully, status will be <code>ActionOpStatus.OK</code>, and the newly created async action will be returned, the returned async action has already been saved to database.<br /><br />
+            CLIHandler will find the first async action handler which can handle the async action to handler it, or it will fail with <code>NO_HANDLER</code>. The async handler's <code>handle</code> is called in a thread pool <br /><br />
             Once an async action is created, the handler's <code>handle</code> method has been scheduled in a threadpool. The handler's <code>handle</code> method is suppose to take care of the execution of the async action<br/><br/>
             Here is a list of possible status based on status
 <table>

@@ -2,9 +2,14 @@ from typing import Any, Optional
 from datetime import datetime
 
 from ._common import CoreModelBase
-from webcli2.db_models import DBAsyncAction
+from webcli2.db_models import DBAction
 
-class AsyncAction(CoreModelBase):
+#############################################################################
+# Represent an action
+# ---------------------------------------------------------------------------
+# It wraps the DB layer action
+#############################################################################
+class Action(CoreModelBase):
     id: int
     is_completed: bool
     created_at: datetime
@@ -15,8 +20,8 @@ class AsyncAction(CoreModelBase):
     progress: Optional[dict]
 
     @classmethod
-    def create(self, db_async_action:DBAsyncAction) -> "DBAsyncAction":
-        return AsyncAction(
+    def create(self, db_async_action:DBAction) -> "DBAction":
+        return Action(
             id = db_async_action.id,
             is_completed = db_async_action.is_completed,
             created_at = db_async_action.created_at,

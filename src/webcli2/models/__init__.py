@@ -1,1 +1,1 @@
-from .main import AsyncAction
+from .main import Action
