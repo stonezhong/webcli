@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from webcli.db_models import DBAsyncAction
-from webcli.models import AsyncAction
+from webcli2.db_models import DBAsyncAction
+from webcli2.models import AsyncAction
 
 from abc import ABC, abstractmethod
 

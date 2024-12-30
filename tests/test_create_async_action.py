@@ -12,8 +12,8 @@ from unittest.mock import patch, ANY, MagicMock
 import pytest
 import pytest_asyncio
 
-from webcli import CLIHandler, AsyncActionHandler, AsyncActionOpStatus
-from webcli.db_models import create_all_tables, DBAsyncAction
+from webcli2 import CLIHandler, AsyncActionHandler, AsyncActionOpStatus
+from webcli2.db_models import create_all_tables, DBAsyncAction
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -67,7 +67,7 @@ async def cli_handler_with_scavenger(db_engine, action_handler):
 #     with a handler that can handle it
 #     the handler does nothing
 ################################################################################
-@patch('webcli.main.get_utc_now')
+@patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
 async def test_async_start_async_action_with_dummy_handler(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
@@ -109,7 +109,7 @@ async def test_async_start_async_action_with_dummy_handler(get_utc_now, cli_hand
 #     with a handler that can handle it
 #     the handler does nothing
 ################################################################################
-@patch('webcli.main.get_utc_now')
+@patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
 async def test_start_async_action_with_dummy_handler(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
@@ -175,7 +175,7 @@ async def test_start_async_action_with_no_handler(cli_handler, action_handler):
 # - the action handler update the progress of the async action
 # - caller call async_wait_for_update_async_action to wait on action's update
 ####################################################################################
-@patch('webcli.main.get_utc_now')
+@patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
 async def test_async_wait_for_update_async_action_1(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
@@ -212,7 +212,7 @@ async def test_async_wait_for_update_async_action_1(get_utc_now, cli_handler, ac
 # - the action handler complete the action after 1 second
 # - caller call async_wait_for_update_async_action to wait on action's update
 ####################################################################################
-@patch('webcli.main.get_utc_now')
+@patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
 async def test_async_wait_for_update_async_action_2(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
@@ -249,7 +249,7 @@ async def test_async_wait_for_update_async_action_2(get_utc_now, cli_handler, ac
 # - the action handler does nothing
 # - caller call async_wait_for_update_async_action to wait on action's update and timeout
 ####################################################################################
-@patch('webcli.main.get_utc_now')
+@patch('webcli2.main.get_utc_now')
 @pytest.mark.asyncio
 async def test_async_wait_for_update_async_action_3(get_utc_now, cli_handler, action_handler):
     get_utc_now.return_value = datetime(2024, 1,1 )
@@ -276,6 +276,6 @@ async def test_scavenger(cli_handler_with_scavenger):
 
     
 def test_get_utc_now():
-    from webcli.main import get_utc_now
+    from webcli2.main import get_utc_now
     dt = get_utc_now()
     assert dt.tzinfo is None

@@ -46,8 +46,8 @@ from asyncio import Event, get_event_loop, AbstractEventLoop
 from pydantic import BaseModel
 import traceback 
 
-from webcli import CLIHandler, AsyncActionOpStatus
-from webcli.db_models import create_all_tables
+from webcli2 import CLIHandler, AsyncActionOpStatus
+from webcli2.db_models import create_all_tables
 import json
 
 class CreateRequest(BaseModel):

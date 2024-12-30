@@ -2,7 +2,7 @@ from typing import Any, Optional
 from datetime import datetime
 
 from ._common import CoreModelBase
-from webcli.db_models import DBAsyncAction
+from webcli2.db_models import DBAsyncAction
 
 class AsyncAction(CoreModelBase):
     id: int
