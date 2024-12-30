@@ -60,6 +60,7 @@ class ActionHandler(ABC):
 
         # self.cli_handler = None
         # self.require_shutdown = None
+        pass
 
     @abstractmethod
     def handle(self, action_id:int, request:Any):
