@@ -298,7 +298,7 @@ class CLIHandler:
 
     def start_action_unsafe(
         self, 
-        request:Any, 
+        request:Any,
         async_call:Optional[AsyncCall]=None
     ) -> Tuple[CLIHandlerStatus, Optional[Action]]:
         log_prefix = "CLIHandler.start_action_unsafe"
@@ -354,13 +354,14 @@ class CLIHandler:
             assert action.id not in self.action_info_dict
             self.action_info_dict[action.id] = ActionInfo(action)
 
+            # let handler to work in the thread pool
             logger.debug(f"{log_prefix}: invoking handle in thread pool, handler {found_action_handler.handle}")
             self.executor.submit(found_action_handler.handle, action.id, request)
 
             rs = CLIHandlerStatus.OK
             if async_call is not None:
                 async_call.finish(return_value=(rs, action))
-            # let handler to work in the thread pool
+            
             logger.debug(f"{log_prefix}: exit, status={rs}, action={action_to_str(action)})")
             return rs, action
 
