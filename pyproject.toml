@@ -18,7 +18,8 @@ classifiers = [
 ]
 dependencies = [
     "SQLAlchemy",
-    "pydantic"
+    "pydantic",
+    "fastapi"
 ]
 
 [project.urls]

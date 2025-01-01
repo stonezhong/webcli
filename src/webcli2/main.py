@@ -196,6 +196,7 @@ class CLIHandler:
             self.scavenger_thread.start()
 
         self.event_loop = get_event_loop()
+        logger.debug(f"{log_prefix}: event loop is {self.event_loop}")
 
         # register all action handler
         for action_handler in self.action_handlers:
