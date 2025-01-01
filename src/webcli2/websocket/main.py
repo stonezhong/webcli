@@ -6,9 +6,11 @@ logger = logging.getLogger(__name__)
 from typing import List, Optional, Tuple, Dict
 import json
 import asyncio
-import threading
+import time
 from pydantic import BaseModel
 from fastapi import WebSocket, WebSocketDisconnect
+
+WEB_SOCKET_PING_INTERVAL = 20  # in seconds
 
 class ClientManager:
     client_id: str
@@ -105,7 +107,7 @@ class WebSocketConnectionManager:
         # TODO: improve, do not hold global lock
         async with self.lock:
             if client_id is None:
-                logger.debug(f"{log_prefix}:  client did not report client id, closing web socket")
+                logger.debug(f"{log_prefix}: client did not report client id, closing web socket")
                 await websocket.close(code=1000, reason="Client ID not provided")
                 logger.debug(f"{log_prefix}:  exit")
                 return
@@ -113,10 +115,18 @@ class WebSocketConnectionManager:
             if client_id not in self.client_manager_dict:
                 self.client_manager_dict[client_id] = ClientManager(client_id)
             client_manager = self.client_manager_dict[client_id]
+            logger.debug(f"{log_prefix}: adding websocket {websocket} to client({client_id})")
             await client_manager.add_web_socket(websocket)
             
         try:
+            last_ping_time:float = None
             while True:
+                # need to ping client if needed
+                now = time.time()
+                if last_ping_time is None or now - last_ping_time >= WEB_SOCKET_PING_INTERVAL:
+                    last_ping_time = now
+                    await websocket.send_text("ping")
+
                 r = await client_manager.pop_notification(websocket, 1.0)
                 if r is None:
                     # no notification
@@ -131,7 +141,8 @@ class WebSocketConnectionManager:
                 await websocket.send_text(json.dumps(to_notify))
                 logger.debug(f"{log_prefix}: notification passed to websocket client")
         except WebSocketDisconnect:
-            logger.error(f"{log_prefix}: got exception", exc_info=True)
+            logger.error(f"{log_prefix}: web socket is disconnected")
+            logger.debug(f"{log_prefix}: removing websocket {websocket} from client({client_id})")
             queue = await client_manager.remove_web_socket(websocket)
             if queue is None:
                 logger.warning(f"{log_prefix}: cannot find websocket") # something is wrong, this should not happen
@@ -141,8 +152,6 @@ class WebSocketConnectionManager:
             async with self.lock:
                 if len(client_manager.queue_dict) == 0:
                     self.client_manager_dict.pop(client_id)
-                    logger.debug(f"{log_prefix}: cleint {client_id} is removed")
+                    logger.debug(f"{log_prefix}: cleint {client_id} is removed since no more websocket used by this client")
 
-            logger.debug(f"{log_prefix}: client {client_id} is removed")
-            logger.debug(f"{log_prefix}: exit")
-
+        logger.debug(f"{log_prefix}: exit")

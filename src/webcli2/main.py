@@ -212,7 +212,7 @@ class CLIHandler:
                 self.action_info_dict[db_action.id] = ActionInfo(Action.create(db_action))
 
         logger.debug(f"{log_prefix}: {len(self.action_info_dict)} pending actions loaded from db")
-        logger.debug(f"{log_prefix}: enter")
+        logger.debug(f"{log_prefix}: exit")
 
     def shutdown(self):
         # TODO: what if some request are stuck, shall we hang on shutdown?
