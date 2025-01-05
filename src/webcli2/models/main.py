@@ -2,7 +2,7 @@ from typing import Any, Optional
 from datetime import datetime
 
 from ._common import CoreModelBase
-from webcli2.db_models import DBAction
+from webcli2.db_models import DBAction, DBActionHandlerConfiguration
 
 #############################################################################
 # Represent an action
@@ -20,7 +20,7 @@ class Action(CoreModelBase):
     progress: Optional[dict]
 
     @classmethod
-    def create(self, db_async_action:DBAction) -> "DBAction":
+    def create(self, db_async_action:DBAction) -> "Action":
         return Action(
             id = db_async_action.id,
             is_completed = db_async_action.is_completed,
@@ -32,3 +32,22 @@ class Action(CoreModelBase):
             progress = db_async_action.progress
         )
 
+
+class ActionHandlerConfiguration(CoreModelBase):
+    id: int
+    action_handler_name: str
+    client_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    configuration: Optional[dict]
+
+    @classmethod
+    def create(self, db_ahc:DBActionHandlerConfiguration) -> "ActionHandlerConfiguration":
+        return ActionHandlerConfiguration(
+            id = db_ahc.id,
+            action_handler_name = db_ahc.action_handler_name,
+            client_id = db_ahc.client_id,
+            created_at = db_ahc.created_at,
+            updated_at = db_ahc.updated_at,
+            configuration = db_ahc.configuration
+        )

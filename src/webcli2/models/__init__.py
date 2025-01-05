@@ -1,1 +1,1 @@
-from .main import Action
+from .main import Action, ActionHandlerConfiguration

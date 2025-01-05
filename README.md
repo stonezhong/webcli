@@ -4,6 +4,9 @@
 * [APIs](#apis)
     * [ActionHandler](#actionhandler)
     * [CLIHandler](#clihandler)
+* [Action Handlers](#action-handlers)
+    * [CLIActionHandler](#cliactionhandler)
+    * [MermaidHandler](#mermaidhandler)
 
 # Concepts
 ## Action
@@ -158,3 +161,9 @@ Represent an action:
     <td><code>complete_action</code></td><td>No</td><td>non-async version of <code>async_complete_action</code></td>
 </tr>
 </table>
+
+# Action Handlers
+## CLIActionHandler
+* [Details](src/webcli2/action_handlers/spark/README.md)
+## MermaidHandler
+* [Details](src/webcli2/action_handlers/mermaid/README.md)

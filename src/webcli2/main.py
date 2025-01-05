@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from webcli2.db_models import DBAction
-from webcli2.models import Action
+from webcli2.db_models import DBAction, DBActionHandlerConfiguration
+from webcli2.models import Action, ActionHandlerConfiguration
 
 from abc import ABC, abstractmethod
 
@@ -693,4 +693,43 @@ class CLIHandler:
                 raise
         else:
             return self.register_monitoring_client_unsafe(action_id, async_call=async_call)
+    
+    ####################################################################################################
+    # set action handler configuration for a client
+    ####################################################################################################
+    async def set_action_handler_configuration(self, action_handler_name:str, client_id:str, configuration:Any) -> ActionHandlerConfiguration:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
+                    .filter(DBActionHandlerConfiguration.action_handler_name == action_handler_name)\
+                    .filter(DBActionHandlerConfiguration.client_id == client_id)\
+                    .all())
+                if len(db_ahc_list) == 0:
+                    db_ahc = DBActionHandlerConfiguration(
+                        action_handler_name = action_handler_name,
+                        client_id = client_id,
+                        created_at = get_utc_now(),
+                        updated_at = None,
+                        configuration = configuration
+                    )
+                else:
+                    db_ahc = db_ahc_list[0]
+                    db_ahc.updated_at = get_utc_now()
+                    db_ahc.configuration = configuration
+                session.add(db_ahc)
+            return ActionHandlerConfiguration.create(db_ahc)
+
+    ####################################################################################################
+    # set action handler configuration for a client
+    ####################################################################################################
+    async def get_action_handler_configuration(self, action_handler_name:str, client_id:str) -> Optional[ActionHandlerConfiguration]:
+        with Session(self.db_engine) as session:
+            db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
+                .filter(DBActionHandlerConfiguration.action_handler_name == action_handler_name)\
+                .filter(DBActionHandlerConfiguration.client_id == client_id)\
+                .all())
+            if len(db_ahc_list) == 0:
+                return None
+            
+            return ActionHandlerConfiguration.create(db_ahc_list[0])
 
