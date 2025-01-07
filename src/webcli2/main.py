@@ -306,7 +306,7 @@ class CLIHandler:
         #############################################################
         # Start an action
         #############################################################
-        logger.debug("{log_prefix}: enter")
+        logger.debug(f"{log_prefix}: enter")
         if self.require_shutdown:
             rs = CLIHandlerStatus.SHUTDOWN_IN_PROGRESS
             if async_call is not None:
@@ -733,3 +733,14 @@ class CLIHandler:
             
             return ActionHandlerConfiguration.create(db_ahc_list[0])
 
+
+    ####################################################################################################
+    # set action handler configuration for a client
+    ####################################################################################################
+    async def get_action_handler_configurations(self, client_id:str) -> List[ActionHandlerConfiguration]:
+        with Session(self.db_engine) as session:
+            db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
+                .filter(DBActionHandlerConfiguration.client_id == client_id)\
+                .all())
+            
+            return [ActionHandlerConfiguration.create(db_ahc) for db_ahc in db_ahc_list]
