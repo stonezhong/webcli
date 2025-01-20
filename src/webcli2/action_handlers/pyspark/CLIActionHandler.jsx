@@ -7,7 +7,7 @@ export default class CLIActionHandler extends BaseActionHandler {
     }
 
     getName() {
-        return "spark";
+        return "pyspark";
     }
 
     getRequestFromCommandText(commandText) {

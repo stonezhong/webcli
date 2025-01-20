@@ -10,7 +10,7 @@ import oci
 import json
 import asyncio
 
-from webcli2 import CLIHandler, ActionHandler
+from webcli2 import WebCLIEngine, ActionHandler
 from oracle_spark_tools import OciApiKeyClientFactory
 from oracle_spark_tools.cli import CLIPackage, PackageType, CommandType
 from pydantic import ValidationError
@@ -34,17 +34,17 @@ def get_value(value:Optional[str]) -> Optional[str]:
 # For each CLIPackage (RESPONSE) we got, we will notify the browser via respective web socket
 ####################################################################################################
 
-class SparkRequest(BaseModel):
+class PySparkRequest(BaseModel):
     type: Literal["spark-cli"]
     server_id: str
     client_id: str
     command_text: str
 
     #########################################################################
-    # Given a SparkRequest model, try to get CLI package from it
+    # Given a PySparkRequest model, try to get CLI package from it
     #########################################################################
     def get_cli_package(self, action_id:int):
-        log_prefix = "SparkRequest.get_cli_package"
+        log_prefix = "PySparkActionHandler.get_cli_package"
         logger.debug(f"{log_prefix}: enter")
 
         lines = self.command_text.strip().split("\n")
@@ -81,19 +81,18 @@ class SparkResponse(BaseModel):
     type: Literal["spark-cli"]
     cli_package: CLIPackage
 
-class CLIActionHandler(ActionHandler):
+class PySparkActionHandler(ActionHandler):
     oakcf: OciApiKeyClientFactory       # this factory can create many different type of oci clients
     stream_id: str                      # The OSS stream (actually a kafka topic)'s ocid
     kafka_consumer_group_name:str       # when polling message from kafka, this is the consumer group name
-    manager:WebSocketConnectionManager  # this guy manages websockets
 
     listener_thread:Any                 # A thread that poll's kafka messages
     stream_client: Any                  # OCI stream client
 
-    def startup(self, cli_handler:CLIHandler):
-        log_prefix = "CLIActionHandler.startup"
+    def startup(self, webcli_engine:WebCLIEngine):
+        log_prefix = "PySparkActionHandler.startup"
         logger.debug(f"{log_prefix}: enter")
-        super().startup(cli_handler)
+        super().startup(webcli_engine)
 
         # start listener thread so we can receive kafka messages
         assert self.listener_thread is None
@@ -103,23 +102,23 @@ class CLIActionHandler(ActionHandler):
         logger.debug(f"{log_prefix}: exit")
 
     def shutdown(self):
-        log_prefix = "CLIActionHandler.shutdown"
+        log_prefix = "PySparkActionHandler.shutdown"
         logger.debug(f"{log_prefix}: enter")
 
         assert self.listener_thread is not None
         assert self.require_shutdown == False
-        assert self.cli_handler is not None
+        assert self.webcli_engine is not None
 
         # ask listener to shutdown and then wait for it to shutdown
         self.require_shutdown = True
         self.listener_thread.join()
-        self.cli_handler = None
+        self.webcli_engine = None
 
         logger.debug(f"{log_prefix}: exit")
 
 
     def listener(self):
-        log_prefix = "CLIActionHandler.listener"
+        log_prefix = "PySparkActionHandler.listener"
         logger.debug(f"{log_prefix}: enter")
         stream_client = self.oakcf.get_stream_client() # we create a spearate stream_client, the member stream_client is for sending messages
         r = stream_client.create_group_cursor(
@@ -161,18 +160,15 @@ class CLIActionHandler(ActionHandler):
                         logger.debug(f"{log_prefix}: got cli package: {cli_package}")
                         # let's complete the action
                         spark_response = SparkResponse(type="spark-cli", cli_package=cli_package)
-                        self.cli_handler.complete_action(
+                        self.webcli_engine.complete_action(
                             cli_package.sequence, 
                             spark_response.model_dump(mode="json")
                         )
                         # notify browser via web socket
-                        asyncio.run_coroutine_threadsafe(
-                            self.manager.publish_notification(
-                                cli_package.client_id, 
-                                cli_package.sequence, 
-                                spark_response
-                            ),
-                            self.cli_handler.event_loop
+                        self.webcli_engine.notify_websockt_client(
+                            cli_package.client_id, 
+                            cli_package.sequence, 
+                            spark_response
                         )
                 else:
                     time.sleep(2)
@@ -181,23 +177,22 @@ class CLIActionHandler(ActionHandler):
             logger.error(f"{log_prefix}: failed polling oss messages", exc_info=True)
         logger.debug(f"{log_prefix}: exit")
 
-    def __init__(self, *, stream_id:str, kafka_consumer_group_name:str, manager:WebSocketConnectionManager):
-        log_prefix = "CLIActionHandler.__init__"
+    def __init__(self, *, stream_id:str, kafka_consumer_group_name:str):
+        log_prefix = "PySparkActionHandler.__init__"
         logger.debug(f"{log_prefix}: enter")
         self.oakcf = OciApiKeyClientFactory()
         self.stream_id = stream_id
         self.kafka_consumer_group_name = kafka_consumer_group_name
-        self.manager = manager
         self.listener_thread = None
         self.stream_client = self.oakcf.get_stream_client()
         logger.debug(f"{log_prefix}: exit")
 
-    def parse_request(self, request:Any, action_id:int) -> Optional[SparkRequest]:
-        log_prefix = "CLIActionHandler.parse_request"
+    def parse_request(self, request:Any, action_id:int) -> Optional[PySparkRequest]:
+        log_prefix = "PySparkActionHandler.parse_request"
         # check if we recognize the request JSON
         logger.debug(f"{log_prefix}: enter")
         try:
-            spark_request = SparkRequest.model_validate(request)
+            spark_request = PySparkRequest.model_validate(request)
         except ValidationError:
             logger.debug(f"{log_prefix}: invalid request format")
             logger.debug(f"{log_prefix}: exit")
@@ -215,7 +210,7 @@ class CLIActionHandler(ActionHandler):
 
     # can you handle this request?
     def can_handle(self, request:Any) -> bool:
-        log_prefix = "CLIActionHandler.can_handle"
+        log_prefix = "PySparkActionHandler.can_handle"
         logger.debug(f"{log_prefix}: enter")
         spark_request = self.parse_request(request, 0)
         r = spark_request is not None
@@ -227,7 +222,7 @@ class CLIActionHandler(ActionHandler):
         #####################################################
         # send a CLIPackage to kafka so a spark driver can pick it up
         #####################################################
-        log_prefix = "CLIActionHandler.send_cli_package"
+        log_prefix = "PySparkActionHandler.send_cli_package"
         logger.debug(f"{log_prefix}: enter")
         text_to_send = cli_package.model_dump_json()
         message = oci.streaming.models.PutMessagesDetailsEntry(
@@ -245,7 +240,7 @@ class CLIActionHandler(ActionHandler):
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
     def handle(self, action_id:int, request:Any):
-        log_prefix = "CLIActionHandler.handle"
+        log_prefix = "PySparkActionHandler.handle"
         logger.debug(f"{log_prefix}: enter")
         # TODO: if we are not able to send message, we should complete the action, set error code
         try:

@@ -1,2 +1,2 @@
-from .spark import CLIActionHandler
+from .pyspark import PySparkActionHandler
 from .mermaid import MermaidHandler

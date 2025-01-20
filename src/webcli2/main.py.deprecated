@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from webcli2.db_models import DBAction, DBActionHandlerConfiguration
 from webcli2.models import Action, ActionHandlerConfiguration
+from webcli2.websocket import WebSocketConnectionManager
 
 from abc import ABC, abstractmethod
 
@@ -39,6 +40,7 @@ def monitoring_client_to_str(monitoring_client:Optional["ActionMonitoringClient"
 
 class ActionHandler(ABC):
     cli_handler: "CLIHandler" = None
+    wsc_manager: WebSocketConnectionManager = None
     require_shutdown: Optional[bool] = None
 
     # can you handle this request?
@@ -46,11 +48,12 @@ class ActionHandler(ABC):
     def can_handle(self, request:Any) -> bool:
         pass # pragma: no cover
 
-    def startup(self, cli_handler: "CLIHandler"):
+    def startup(self, wsc_manager:WebSocketConnectionManager, cli_handler: "CLIHandler"):
         assert self.require_shutdown is None
         assert self.cli_handler is None
 
         self.require_shutdown = False
+        self.wsc_manager = wsc_manager
         self.cli_handler = cli_handler
 
     @abstractmethod

@@ -8,7 +8,7 @@ import os
 import tempfile
 import asyncio
 
-from webcli2 import CLIHandler, ActionHandler
+from webcli2 import WebCLIEngine, ActionHandler
 from pydantic import ValidationError
 
 import mermaid as md
@@ -28,27 +28,24 @@ class MermaidResponse(BaseModel):
     svg: str
 
 class MermaidHandler(ActionHandler):
-    manager:WebSocketConnectionManager  # this guy manages websockets
-
-    def __init__(self, *, manager:WebSocketConnectionManager):
+    def __init__(self):
         log_prefix = "MermaidHandler.__init__"
         logger.debug(f"{log_prefix}: enter")
-        self.manager = manager
         logger.debug(f"{log_prefix}: exit")
 
-    def startup(self, cli_handler:CLIHandler):
+    def startup(self, webcli_engine:WebCLIEngine):
         log_prefix = "MermaidHandler.startup"
         logger.debug(f"{log_prefix}: enter")
-        super().startup(cli_handler)
+        super().startup(webcli_engine)
         logger.debug(f"{log_prefix}: exit")
 
     def shutdown(self):
         log_prefix = "MermaidHandler.shutdown"
         logger.debug(f"{log_prefix}: enter")
         assert self.require_shutdown == False
-        assert self.cli_handler is not None
+        assert self.webcli_engine is not None
         self.require_shutdown = True
-        self.cli_handler = None
+        self.webcli_engine = None
         logger.debug(f"{log_prefix}: exit")
 
     def parse_request(self, request:Any) -> Optional[MermaidRequest]:
@@ -95,14 +92,11 @@ class MermaidHandler(ActionHandler):
             with open(f.name, "rt") as ff:
                 svg = ff.read()
             mermaid_response = MermaidResponse(type="mermaid", svg = svg)
-            self.cli_handler.complete_action(action_id, mermaid_response.model_dump(mode="json"))
-            asyncio.run_coroutine_threadsafe(
-                self.manager.publish_notification(
-                    mermaid_request.client_id, 
-                    action_id, 
-                    mermaid_response
-                ),
-                self.cli_handler.event_loop
+            self.webcli_engine.complete_action(action_id, mermaid_response.model_dump(mode="json"))
+            self.webcli_engine.notify_websockt_client(
+                mermaid_request.client_id, 
+                action_id, 
+                mermaid_response
             )
             logger.debug(f"{log_prefix}: exit")
         except:
