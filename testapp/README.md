@@ -35,6 +35,8 @@ Demonstrating how to build a web application that uses webcli.
 ```bash
 npm install
 npm run build-dev
+# or
+npm run build-prod
 ```
 
 # Start Web Server
