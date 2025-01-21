@@ -71,10 +71,6 @@ module.exports = (env, argv) => {
             symlinks: false // Treat symlinks as local files
         },
 
-
-        /****************************************
-         * Allow imports without specifying extensions
-         */
         plugins: [
             new CleanWebpackPlugin(), // Cleans the output folder before building
 

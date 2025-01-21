@@ -1,7 +1,7 @@
 import React from 'react';
-import BaseActionHandler from './BaseActionHandler';
+import {BaseActionHandler} from './webcli_client';
 
-export default class CLIActionHandler extends BaseActionHandler {
+export default class PySparkActionHandler extends BaseActionHandler {
     constructor(clientId) {
         super(clientId);
     }
@@ -10,8 +10,8 @@ export default class CLIActionHandler extends BaseActionHandler {
         return "pyspark";
     }
 
-    getRequestFromCommandText(commandText) {
-        const lines = commandText.trim().split("\n")
+    getActionRequestFromText(text) {
+        const lines = text.trim().split("\n")
         if (lines.length == 0) {
             return null;
         }
@@ -23,7 +23,7 @@ export default class CLIActionHandler extends BaseActionHandler {
                 type: "spark-cli",
                 client_id: this.clientId,
                 server_id: this.config.server_id,
-                command_text: commandText
+                command_text: text
             };
         }
 

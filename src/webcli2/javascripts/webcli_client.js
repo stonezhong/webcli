@@ -53,6 +53,7 @@ export class WebCLIClient {
         }
 
         this.actionHandlerMap.set(name, actionHandler);
+        actionHandler.onRegister(this);
     }
 
     /******************************************************************************
@@ -75,16 +76,15 @@ export class WebCLIClient {
      */
     renderAction(action) {
         if (action.response === null) {
-            return <div key={action.id}>
+            return <div>
                 <pre>{action.text}</pre>
-                <hr />
+                <p>Loading result ...</p>
             </div>;
         }
         const actionHandler = this.actionHandlerMap.get(action.handlerName);
-        return <div key={action.id}>
+        return <div>
             <pre>{action.text}</pre>
             {actionHandler.renderAction(action)}
-            <hr />
         </div>;
     }
     
@@ -150,6 +150,7 @@ export class BaseActionHandler {
     constructor(clientId) {
         this.clientId = clientId;
         this.config = {};
+        this.webcliClient = null;
     }
 
     setConfig(config) {
@@ -170,5 +171,9 @@ export class BaseActionHandler {
 
     renderAction(action) {
         throw new Exception("derived class to implement");
+    }
+
+    onRegister(webCliClient) {
+        this.webcliClient = webCliClient;
     }
 }
