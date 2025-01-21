@@ -1,81 +1,135 @@
-import React, {useState} from 'react';
+import React from 'react';
 import './App.css';
+import {Action} from '../tools/webcli_client';
 
-import Container from 'react-bootstrap/Container';
-import Form from 'react-bootstrap/Form';
-import Row from 'react-bootstrap/Row';
-import Col from 'react-bootstrap/Col';
-import Button from 'react-bootstrap/Button';
+import pino from 'pino';
+const logger = pino({
+    level: 'debug',
+    transport: {
+        target: 'pino-pretty',
+        options: { colorize: true },
+    },
+});
 
-
-const App = () => {
-  const [command, setCommand] = useState(''); // State to hold the textarea content
-  const [answerComponents, setAnswerComponents] = useState([])
-
-  const addAnswerComponent = (answerComponent) => {
-    setAnswerComponents([...answerComponents, answerComponent]);
-  };
-
-  const onCommandChange = (event) => {
-    setCommand(event.target.value);
-  };
-
-  // Give an answer -- a JSON object, return a ReactDOM element which renders the answer
-  const renderAnswer = async (answer) => {
-    if (answer.ui_type === "message") {
-      return <pre>{answer.message}</pre>
+class App extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            command:"",
+            actions: []
+        };
     }
 
-  }
-
-  const fetchData = async (event) => {
-    console.log("step 1");
-    const response = await fetch('/test');
-    if (!response.ok) {
-      console.log(response);
+    /**********************************************************************************
+     * Called when an action is completed
+     */
+    onActionCompleted = async (actionId, actionResponse) => {
+        const newActions = this.state.actions.map(action => {
+            if (action.id !== actionId) {
+                return action;
+            }
+            action.response = actionResponse;
+            return action;
+        });
+        this.setState({
+            actions: newActions
+        });
     }
-    const answer = await response.json();
+
+    /**********************************************************************************
+     * Called when user hit "send" button
+     */
+    sendAction = async () => {
+        logger.info("App.sendAction: enter");
+        const command = this.state.command;
+        logger.info(`App.sendAction: command=${command}`);
+        const [actionHandler, request] = this.props.webCLIClient.getActionRequestFromText(command);
+
+        // if no action handler recognize the text, we will ignore it
+        if (request === null) {
+            logger.info("App.sendAction: unrecognized command");
+            logger.info("App.sendAction: exit");
+            return;
+        }
+
+        const response = await fetch("/actions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(request),
+        });
+        logger.info(`App.sendAction: send action to server`);
+
+        if (!response.ok) {
+            logger.info("App.sendAction: error, ", response);
+            return;
+        }
+
+        const actionResponse = await response.json();
+        logger.info("App.sendAction: server response: ", actionResponse.id);
+        const newAction = new Action({
+            id: actionResponse.id, 
+            text: command, 
+            request: request, 
+            response: actionResponse,
+            handlerName: actionHandler.getName()
+        });
+        this.setState({
+            actions: [...this.state.actions, newAction]
+        });
+        logger.info("App.sendAction: exit");
+    }
+
+    // after component is mounted
+    componentDidMount() {
+        logger.info("App.componentDidMount: enter");
+        this.props.webCLIClient.connect(this.onActionCompleted);
+        logger.info("App.componentDidMount: websocket is connected");
+        logger.info("App.componentDidMount: exit");
+    }
+
+    // after component state changes
+    componentDidUpdate(prevProps, prevState) {
+        // commented since it is called too often
+        // logger.info("App.componentDidUpdate: enter");
+        // logger.info("App.componentDidUpdate: exit");
+    }
+
+    // after component is unmounted
+    componentWillUnmount() {
+        // disconnect upon unmount does not work, when you put top component
+        // under <StrictMode>, since it will mount your component, then unmount
+        // then mount again
+        // if user close the browser tab, the web socket will be closed then
+        logger.info("App.componentWillUnmount: enter");
+        logger.info("App.componentWillUnmount: exit");
+    }
     
-    // for different result, we will use different UI component to render it
-    // as a test, let's always put some funny string here
-    const answerComponent = renderAnswer(answer);
-    addAnswerComponent(answerComponent);
-
-    console.log(result);
-  }
-
-  return (
-    <div className='cli-page'>
-      <Container fluid className="answer-panel">
-        <div className="answer-inner-panel">
-          {answerComponents.map((answerComponent, index) => (
-            <div key={index}>{answerComponent}</div>
-          ))}
-        </div>
-      </Container>
-      <Container fluid className="question-panel">
-        <div className='question-inner-panel'>
-          <Row>
-            <Col>
-              <Form>
-                <Form.Control as="textarea" rows={6} 
-                  value={command}
-                  onChange={onCommandChange}
-                  placeholder='Please input your command'
-                />
-              </Form>
-            </Col>
-            <Col xs={1}>
-              <Button 
-                variant="primary"
-                onClick={fetchData}
-              >Submit</Button>
-            </Col>
-          </Row>
-        </div>
-      </Container>
-    </div>
-  );
-};
+    render() {
+        return (
+            <>
+                <div id="answers">
+                    {this.state.actions.map(action => this.props.webCLIClient.renderAction(action))}
+                </div>
+                <div>
+                    <textarea 
+                        id="command" 
+                        name="command" 
+                        rows="4" 
+                        cols="50" 
+                        className="question-panel"
+                        onChange={async (event) => {
+                            this.setState({command: event.target.value})
+                        }}
+                        value={this.state.command}
+                    >
+                    </textarea>
+                    <button type="button" onClick={this.sendAction}>Send</button>
+                </div>
+            </>
+        );
+    }
+}
 
 export default App;

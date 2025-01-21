@@ -1,5 +1,5 @@
 import logging
-logger = logging.getLogger("webcli")
+logger = logging.getLogger(__name__)
 
 from typing import Dict, Tuple, Any, List, Optional
 from datetime import datetime, timezone
@@ -30,7 +30,7 @@ def get_utc_now() -> datetime:
 def action_to_str(action:Optional[Action]) -> str:
     return "None" if action is None else f"Action(id={action.id})"
 
-# Status code for ActionHandlerManager API calls
+# Status code for WebCLIEngine API calls
 class WebCLIEngineStatus(enum.Enum):
     OK                      = 0
     DB_FAILED               = 1 # database failure
@@ -82,7 +82,6 @@ class ActionHandler(ABC):
         self.require_shutdown = False
         self.webcli_engine = webcli_engine
 
-    @abstractmethod
     def shutdown(self):
         # assert self.require_shutdown == False
         # assert self.cli_handler is not None
@@ -111,7 +110,7 @@ class WebCLIEngine:
     action_handlers: List[ActionHandler]            # List of registered action handler
 
     def __init__(self, *, db_engine:Engine, wsc_manager:WebSocketConnectionManager, action_handlers:List[ActionHandler]):
-        log_prefix = "ActionHandlerManager.__init__"
+        log_prefix = "WebCLIEngine.__init__"
         logger.debug(f"{log_prefix}: enter")
         self.db_engine = db_engine
         self.wsc_manager = wsc_manager
@@ -124,7 +123,7 @@ class WebCLIEngine:
 
 
     def startup(self):
-        log_prefix = "ActionHandlerManager.startup"
+        log_prefix = "WebCLIEngine.startup"
         # TODO: maybe I should limit the thread number
         logger.debug(f"{log_prefix}: enter")
         self.require_shutdown = False
@@ -147,7 +146,7 @@ class WebCLIEngine:
         logger.debug(f"{log_prefix}: exit")
 
     def shutdown(self):
-        log_prefix = "ActionHandlerManager.shutdown"
+        log_prefix = "WebCLIEngine.shutdown"
         logger.debug(f"{log_prefix}: enter")
         assert self.require_shutdown == False
         self.require_shutdown = True
@@ -404,7 +403,7 @@ class WebCLIEngine:
     ####################################################################################################
     # set action handler configuration for a client
     ####################################################################################################
-    async def set_action_handler_configuration(self, action_handler_name:str, client_id:str, configuration:Any) -> ActionHandlerConfiguration:
+    def set_action_handler_configuration(self, action_handler_name:str, client_id:str, configuration:Any) -> ActionHandlerConfiguration:
         with Session(self.db_engine) as session:
             with session.begin():
                 db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
@@ -429,7 +428,7 @@ class WebCLIEngine:
     ####################################################################################################
     # set action handler configuration for a client
     ####################################################################################################
-    async def get_action_handler_configuration(self, action_handler_name:str, client_id:str) -> Optional[ActionHandlerConfiguration]:
+    def get_action_handler_configuration(self, action_handler_name:str, client_id:str) -> Optional[ActionHandlerConfiguration]:
         with Session(self.db_engine) as session:
             db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
                 .filter(DBActionHandlerConfiguration.action_handler_name == action_handler_name)\

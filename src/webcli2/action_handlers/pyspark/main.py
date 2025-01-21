@@ -8,14 +8,11 @@ import threading
 from pydantic import BaseModel, ValidationError
 import oci
 import json
-import asyncio
 
 from webcli2 import WebCLIEngine, ActionHandler
 from oracle_spark_tools import OciApiKeyClientFactory
 from oracle_spark_tools.cli import CLIPackage, PackageType, CommandType
 from pydantic import ValidationError
-
-from webcli2.websocket import WebSocketConnectionManager
 
 def get_value(value:Optional[str]) -> Optional[str]:
     return None if value is None else b64decode(value.encode("ascii")).decode("utf-8")

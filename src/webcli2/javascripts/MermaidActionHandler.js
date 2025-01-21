@@ -1,5 +1,5 @@
 import React from 'react';
-import BaseActionHandler from './BaseActionHandler';
+import {BaseActionHandler} from './webcli_client';
 
 /********************************************************************************
  * This action handler allows you to display mermaid graph
@@ -18,8 +18,8 @@ export default class MermaidActionHandler extends BaseActionHandler {
         return "mermaid";
     }
 
-    getRequestFromCommandText(commandText) {
-        const lines = commandText.split("\n")
+    getActionRequestFromText(text) {
+        const lines = text.split("\n")
         if (lines.length == 0) {
             return null;
         }
@@ -27,10 +27,11 @@ export default class MermaidActionHandler extends BaseActionHandler {
         const title = lines[0]
         if (title.trim() == "%mermaid%") {
             // we are trying to show a diagram
+            // this MUST match MermaidRequest class in python
             const request = {
                 type: "mermaid",
                 client_id: this.clientId,
-                command_text: commandText                
+                command_text: text                
             }
             return request;
         }
@@ -43,3 +44,5 @@ export default class MermaidActionHandler extends BaseActionHandler {
         return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
     }
 }
+
+
