@@ -30,17 +30,25 @@ export class Action {
 
 export class WebCLIClient {
     /*******************
-     * client_id        : str, a unique ID represent a client
-     * url              : web socket URL, e.g. ws://localhost:8000/ws
-     * onActionCompleted: an async function, called when we receive a signal that an action is completed
-     *                   from web socket
+     * client_id       : str, a unique ID represent a client
+     * url             : web socket URL, e.g. ws://localhost:8000/ws
+     * onActionsUpdated: an async function, to notify UI component it need to re-render
+     * actions         : tracks all actions
+     * renderPendingAction: a method provided by caller, when an action is pending answer, this show s a loading icon
      */
     constructor({url, client_id}) {
         this.url = url;
         this.client_id = client_id;
         this.socket = null;
-        this.onActionCompleted = null;
+        this.onActionsUpdated = null;
         this.actionHandlerMap = new Map();
+        this.actions = [];
+        this.renderPendingAction = (action) => <div>Loading result ...</div>;
+    }
+
+    async addAction(action) {
+        this.actions.push(action);
+        await this.onActionsUpdated();
     }
 
     /*******************
@@ -78,7 +86,7 @@ export class WebCLIClient {
         if (action.response === null) {
             return <div>
                 <pre>{action.text}</pre>
-                <p>Loading result ...</p>
+                {this.renderPendingAction(action)}
             </div>;
         }
         const actionHandler = this.actionHandlerMap.get(action.handlerName);
@@ -87,20 +95,55 @@ export class WebCLIClient {
             {actionHandler.renderAction(action)}
         </div>;
     }
+
+
+    /*******************
+     * name: The name of the action handler
+     * action: the action
+     * 
+     */
+    async onActionCompleted(actionId, response) {
+        logger.info("WebCLIClient.onActionCompleted: enter");
+
+        // in javascript, array.map does not support async function
+        const newActions = [];
+        for (const action of this.actions) {
+            if (action.id !== actionId) {
+                newActions.push(action);
+                continue;
+            }
+
+            const newAction = new Action({
+                id: action.id,
+                text: action.text,
+                request: action.request,
+                handlerName: action.handlerName
+            });
+            const actionHandler = this.actionHandlerMap.get(action.handlerName);
+            await actionHandler.onActionCompleted(newAction, response);
+            newActions.push(newAction);
+        }
+        this.actions = newActions;
+
+        await this.onActionsUpdated();
+
+        logger.info("WebCLIClient.onActionCompleted: exit");
+    }
     
     /*******************
      * Connecto to web socket
      * onActionCompleted: called upon success
      * 
      */
-    connect(onActionCompleted) {
+    connect(onActionsUpdated, renderPendingAction) {
         logger.info("WebCLIClient.connect: enter");
         if (this.socket !== null) {
             throw new Error("WebSocket is already connected!");
         }
 
         this.socket = new WebSocket(this.url);
-        this.onActionCompleted = onActionCompleted;
+        this.onActionsUpdated = onActionsUpdated;
+        this.renderPendingAction = renderPendingAction;
 
         // Event: Connection opened
         this.socket.addEventListener("open", () => {
@@ -153,27 +196,56 @@ export class BaseActionHandler {
         this.webcliClient = null;
     }
 
+    /*********************************************
+     * Update the config of an action handler
+     */
     setConfig(config) {
         this.config = structuredClone(config);
     }
 
+    /*********************************************
+     * Return the config of an action handler, the config is a JSON object
+     */
     getConfig() {
         return structuredClone(this.config);
     }
 
+    /*********************************************
+     * Return the name of an action handler
+     */
     getName() {
         throw new Exception("derived class to implement");
     }
 
+    /*********************************************
+     * As an action hanlder, you need to tell if you can recognize the 
+     * text and extract an Action object from it
+     */
     getActionRequestFromText(text) {
         throw new Exception("derived class to implement");
     }
 
+    /*********************************************
+     * Render an action
+     */
     renderAction(action) {
         throw new Exception("derived class to implement");
     }
 
+    /*********************************************
+     * Called when an action is registered via registerActionHandler
+     */
     onRegister(webCliClient) {
         this.webcliClient = webCliClient;
+    }
+
+    /*********************************************
+     * Called when an action is completed
+     * action:   The action object. An Action instance, but response is null
+     * response: The response from server
+     */
+    async onActionCompleted(action, response) {
+        // derived class can override this behavior if needed
+        action.response = response;
     }
 }
