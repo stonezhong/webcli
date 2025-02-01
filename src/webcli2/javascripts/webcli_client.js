@@ -54,7 +54,17 @@ export class WebCLIClient {
         if (!this.actionHandlerMap.has(actionHandlerName)) {
             return null;
         }
-        return this.actionHandlerMap.get(actionHandlerName).config;
+        return this.actionHandlerMap.get(actionHandlerName).getConfig();
+    }
+
+    /*******************
+     * Set action handler config
+     */
+    setActionHandlerConfig(actionHandlerName, config) {
+        if (!this.actionHandlerMap.has(actionHandlerName)) {
+            return;
+        }
+        this.actionHandlerMap.get(actionHandlerName).setConfig(config);
     }
 
     async addAction(action) {

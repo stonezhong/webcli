@@ -86,17 +86,26 @@ export default class ConfigActionHandler extends BaseActionHandler {
      */
     async onActionCompleted(action, response) {
         const actionHandlerName = action.request.action_handler_name;
-        const config = this.webcliClient.getActionHandlerConfig(actionHandlerName);
-        if (config === null) {
+        if (action.request.action === "get") {
+            const config = this.webcliClient.getActionHandlerConfig(actionHandlerName);
+            if (config === null) {
+                action.response = {
+                    succeeded: false,
+                    error_message: `action handler ${actionHandlerName} does not exist!`
+                }
+                return;
+            }
             action.response = {
-                succeeded: false,
-                error_message: `action handler ${actionHandlerName} does not exist!`
+                succeeded: true,
+                content: JSON.stringify(config, null, 4)
             }
             return;
         }
-        action.response = {
-            succeeded: true,
-            content: JSON.stringify(config, null, 4)
+
+        action.response = response;
+        if (response.succeeded) {
+            const config = JSON.parse(response.content);
+            this.webcliClient.setActionHandlerConfig(actionHandlerName, config);
         }
         return;
     }
