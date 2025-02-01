@@ -46,6 +46,17 @@ export class WebCLIClient {
         this.renderPendingAction = (action) => <div>Loading result ...</div>;
     }
 
+    /*******************
+     * Get action handler's config, if found, return a JSON for the config
+     * otherwise, return null.
+     */
+    getActionHandlerConfig(actionHandlerName) {
+        if (!this.actionHandlerMap.has(actionHandlerName)) {
+            return null;
+        }
+        return this.actionHandlerMap.get(actionHandlerName).config;
+    }
+
     async addAction(action) {
         this.actions.push(action);
         await this.onActionsUpdated();

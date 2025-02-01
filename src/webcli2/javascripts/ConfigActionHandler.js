@@ -78,6 +78,28 @@ export default class ConfigActionHandler extends BaseActionHandler {
 
         return <pre>{`Error: ${action.response.error_message}`}</pre>;
     }
+
+    /*********************************************
+     * Called when an action is completed
+     * action:   The action object. An Action instance, but response is null
+     * response: The response from server
+     */
+    async onActionCompleted(action, response) {
+        const actionHandlerName = action.request.action_handler_name;
+        const config = this.webcliClient.getActionHandlerConfig(actionHandlerName);
+        if (config === null) {
+            action.response = {
+                succeeded: false,
+                error_message: `action handler ${actionHandlerName} does not exist!`
+            }
+            return;
+        }
+        action.response = {
+            succeeded: true,
+            content: JSON.stringify(config, null, 4)
+        }
+        return;
+    }
 }
 
 

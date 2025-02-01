@@ -66,7 +66,7 @@ class ConfigHandler(ActionHandler):
                 config_response = ConfigResponse(
                     content=None,
                     succeeded=False,
-                    error_message = f"config for \"config_request.action_handler_name\" does not exist"
+                    error_message = f"config for \"{config_request.action_handler_name}\" does not exist"
                 )
             else:
                 config_response = ConfigResponse(
