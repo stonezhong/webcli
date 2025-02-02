@@ -1,5 +1,9 @@
 import React from 'react';
 import pino from 'pino';
+import Form from 'react-bootstrap/Form';
+import Button from 'react-bootstrap/Button';
+import Stack from 'react-bootstrap/Stack';
+import Accordion from 'react-bootstrap/Accordion';
 
 const logger = pino({
     level: 'debug',
@@ -27,6 +31,20 @@ export class Action {
     }
 }
 
+export class ActionWrapper {
+    /*******************
+     * Action with some UI related stateful data
+    */
+    constructor(action) {
+        this.action = action;
+        this.minimized = false;     // is the entire q-a minimized
+        this.show_question = true;  // show question?
+        this.show_answer = true;    // show answer?
+        this.editing_title = false;  // editing title?
+        this.title = "question";    // the section title
+    }
+}
+
 
 export class WebCLIClient {
     /*******************
@@ -42,8 +60,63 @@ export class WebCLIClient {
         this.socket = null;
         this.onActionsUpdated = null;
         this.actionHandlerMap = new Map();
-        this.actions = [];
+        this.actionWrappers = [];
         this.renderPendingAction = (action) => <div>Loading result ...</div>;
+    }
+
+    deleteAction = async (actionWrapper) => {
+        this.actionWrappers = this.actionWrappers.filter(thisActionWrapper => thisActionWrapper.action.id !== actionWrapper.action.id)
+        await this.onActionsUpdated();
+    }
+
+    setActionMinimized = async (actionWrapper, minimized) => {
+        this.actionWrappers = this.actionWrappers.map(thisActionWrapper => {
+            if (thisActionWrapper.action.id === actionWrapper.action.id) {
+                thisActionWrapper.minimized = minimized;
+            }
+            return thisActionWrapper;
+        });
+        await this.onActionsUpdated();
+    }
+
+    setActionShowQuestion = async (actionWrapper, show_question) => {
+        this.actionWrappers = this.actionWrappers.map(thisActionWrapper => {
+            if (thisActionWrapper.action.id === actionWrapper.action.id) {
+                thisActionWrapper.show_question = show_question;
+            }
+            return thisActionWrapper;
+        });
+        await this.onActionsUpdated();
+    }
+
+    setActionShowAnswer = async (actionWrapper, show_answer) => {
+        this.actionWrappers = this.actionWrappers.map(thisActionWrapper => {
+            if (thisActionWrapper.action.id === actionWrapper.action.id) {
+                thisActionWrapper.show_answer = show_answer;
+            }
+            return thisActionWrapper;
+        });
+        await this.onActionsUpdated();
+    }
+
+    setActionEditingTitle = async (actionWrapper, editing_title) => {
+        this.actionWrappers = this.actionWrappers.map(thisActionWrapper => {
+            if (thisActionWrapper.action.id === actionWrapper.action.id) {
+                thisActionWrapper.editing_title = editing_title;
+            }
+            return thisActionWrapper;
+        });
+        await this.onActionsUpdated();
+    }
+
+    setActionTitle = async (actionWrapper, title) => {
+        this.actionWrappers = this.actionWrappers.map(thisActionWrapper => {
+            if (thisActionWrapper.action.id === actionWrapper.action.id) {
+                thisActionWrapper.title = title;
+            }
+            return thisActionWrapper;
+        });
+        await this.onActionsUpdated();
     }
 
     /*******************
@@ -68,7 +141,8 @@ export class WebCLIClient {
     }
 
     async addAction(action) {
-        this.actions.push(action);
+        const actionWrapper = new ActionWrapper(action)
+        this.actionWrappers.push(actionWrapper);
         await this.onActionsUpdated();
     }
 
@@ -103,18 +177,104 @@ export class WebCLIClient {
      * action: Action
      * We let the action to render the request and response
      */
-    renderAction(action) {
-        if (action.response === null) {
-            return <div>
-                <pre>{action.text}</pre>
-                {this.renderPendingAction(action)}
-            </div>;
-        }
+    renderAction(actionWrapper) {
+        const action = actionWrapper.action;
         const actionHandler = this.actionHandlerMap.get(action.handlerName);
         return <div>
-            <pre>{action.text}</pre>
-            {actionHandler.renderAction(action)}
+            <div>
+                <div>
+                    <Stack direction="horizontal" gap={3}>
+                        <Button 
+                            variant="primary" 
+                            size="sm" 
+                            className="me-2"
+                            onClick={async event=>{this.deleteAction(actionWrapper)}}
+                        >
+                            Delete
+                        </Button>
+                        <Form.Control 
+                            type="input" 
+                            value={actionWrapper.title} 
+                            disabled={!actionWrapper.editing_title}
+                            onChange={async event=>{
+                                await this.setActionTitle(actionWrapper, event.target.value);
+                            }}
+                        />
+                    </Stack>
+                </div>
+                <Form.Check
+                    inline
+                    type="checkbox"
+                    label="Minimized"
+                    checked={actionWrapper.minimized}
+                    onChange={async event => {
+                        await this.setActionMinimized(actionWrapper, event.target.checked);
+                    }}
+                />
+                <Form.Check
+                    inline
+                    type="checkbox"
+                    label="Show Question"
+                    checked={actionWrapper.show_question}
+                    onChange={async event => {
+                        await this.setActionShowQuestion(actionWrapper, event.target.checked);
+                    }}
+                />
+                <Form.Check
+                    inline
+                    type="checkbox"
+                    label="Show Answer"
+                    checked={actionWrapper.show_answer}
+                    onChange={async event => {
+                        await this.setActionShowAnswer(actionWrapper, event.target.checked);
+                    }}
+                />
+                <Form.Check
+                    inline
+                    type="checkbox"
+                    label="Edit Title"
+                    checked={actionWrapper.editing_title}
+                    onChange={async event => {
+                        await this.setActionEditingTitle(actionWrapper, event.target.checked);
+                    }}
+                />
+            </div>
+            {
+                (!actionWrapper.minimized && actionWrapper.show_question)?<pre>{action.text}</pre>:null
+            }
+            {
+                (!actionWrapper.minimized && actionWrapper.show_answer)?((action.response === null)?this.renderPendingAction(action):actionHandler.renderAction(action)):null
+            }
         </div>;
+
+        // if (action.response === null) {
+        //     return  <Accordion defaultActiveKey={['0']} alwaysOpen>
+        //         <Accordion.Item eventKey="0">
+        //             <Accordion.Header>Question</Accordion.Header>
+        //             <Accordion.Body><pre>{action.text}</pre></Accordion.Body>
+        //         </Accordion.Item>
+        //         <Accordion.Item eventKey="1">
+        //             <Accordion.Header>Answer</Accordion.Header>
+        //             <Accordion.Body>
+        //                 {this.renderPendingAction(action)}
+        //             </Accordion.Body>
+        //         </Accordion.Item>
+        //     </Accordion>;
+        // }
+
+        // const actionHandler = this.actionHandlerMap.get(action.handlerName);
+        // return <Accordion defaultActiveKey={['0']} alwaysOpen>
+        //     <Accordion.Item eventKey="0">
+        //         <Accordion.Header>Question</Accordion.Header>
+        //         <Accordion.Body><pre>{action.text}</pre></Accordion.Body>
+        //     </Accordion.Item>
+        //     <Accordion.Item eventKey="1">
+        //         <Accordion.Header>Answer</Accordion.Header>
+        //         <Accordion.Body>
+        //             {actionHandler.renderAction(action)}
+        //         </Accordion.Body>
+        //     </Accordion.Item>
+        // </Accordion>;
     }
 
 
@@ -127,24 +287,25 @@ export class WebCLIClient {
         logger.info("WebCLIClient.onActionCompleted: enter");
 
         // in javascript, array.map does not support async function
-        const newActions = [];
-        for (const action of this.actions) {
-            if (action.id !== actionId) {
-                newActions.push(action);
+        const newActionWrappers = [];
+        for (const actionWrapper of this.actionWrappers) {
+            if (actionWrapper.action.id !== actionId) {
+                newActionWrappers.push(actionWrapper);
                 continue;
             }
 
             const newAction = new Action({
-                id: action.id,
-                text: action.text,
-                request: action.request,
-                handlerName: action.handlerName
+                id: actionWrapper.action.id,
+                text: actionWrapper.action.text,
+                request: actionWrapper.action.request,
+                handlerName: actionWrapper.action.handlerName
             });
-            const actionHandler = this.actionHandlerMap.get(action.handlerName);
+            const newActionWrapper = new ActionWrapper(newAction);
+            const actionHandler = this.actionHandlerMap.get(newAction.handlerName);
             await actionHandler.onActionCompleted(newAction, response);
-            newActions.push(newAction);
+            newActionWrappers.push(newActionWrapper);
         }
-        this.actions = newActions;
+        this.actionWrappers = newActionWrappers;
 
         await this.onActionsUpdated();
 
