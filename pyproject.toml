@@ -19,8 +19,14 @@ classifiers = [
 dependencies = [
     "SQLAlchemy",
     "pydantic",
-    "fastapi"
+    "fastapi",
+    "PyYAML",
+    "uvicorn",
+    "Jinja2"
 ]
+
+[project.scripts]
+webcli = "webcli2.cli:webcli"
 
 [project.urls]
 Homepage = "https://github.com/stonezhong/webcli"
