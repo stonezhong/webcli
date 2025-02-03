@@ -1,6 +1,0 @@
-pydantic==2.10.4
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-mermaid-py==0.7.0
-Jinja2==3.1.5
--e ..
