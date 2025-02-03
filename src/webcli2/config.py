@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict
 
 import os
 from pydantic import BaseModel
@@ -16,7 +16,13 @@ class CoreConfig(BaseModel):
     log_dir: str = "logs"       # a directory to store log files
     websocket_uri:str           # client must provide web socket uri, e.g. ws://localhost:8000/ws
     db_url:str
+    action_handlers: Dict[str, "ActionHandlerInfo"] = {}
 
+class ActionHandlerInfo(BaseModel):
+    module_name: str
+    class_name: str
+    config: dict = {}
+    
 def normalize_filename(base_dir:str, filename:str):
     filename = os.path.expanduser(filename)
     filename = os.path.expandvars(filename)

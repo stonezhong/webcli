@@ -4,6 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import os
+import importlib
 import asyncio
 import uuid
 import json
@@ -17,38 +18,40 @@ from contextlib import asynccontextmanager
 
 from webcli2 import WebCLIEngine, WebCLIEngineStatus, WebSocketConnectionManager
 from webcli2.action_handlers.config import ConfigHandler
-from webcli2.action_handlers.mermaid import MermaidHandler
-from webcli2.action_handlers.pyspark import PySparkActionHandler
 from webcli2.db_models import create_all_tables
 from fastapi import WebSocket
 
 from webcli2.config import load_config
 
+##########################################################
+# WEB_DIR is the directory of web insode webcli2 package
+##########################################################
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
 
 config = load_config()
-WEB_SOCKET_URI = config.core.websocket_uri
-DEBUG_STREAM_ID = "ocid1.stream.oc1.iad.amaaaaaazzric4ia2zc6kt7opunq4lmqkd3fvlzx7vfmpassaclgva5ytqva"
-WEBCLI_DB_URL = config.core.db_url
-KAFKA_CONSUMER_GROUP_NAME = "cli-action-handler"
 
 ##########################################################
-# create a WebCLIEngine, config action handlers if needed
+# Loading all action handlers
+# We will install ConfigHandler anyway
 ##########################################################
-engine = create_engine(WEBCLI_DB_URL)
+action_handlers = [ConfigHandler()]
+for action_handler_name, action_handler_info in config.core.action_handlers.items():
+    logger.info(f"Loading action handler: name={action_handler_name}, module={action_handler_info.module_name}, class={action_handler_info.class_name}")
+    module = importlib.import_module(action_handler_info.module_name)
+    klass = getattr(module, action_handler_info.class_name)
+    action_handler = klass(**action_handler_info.config)
+    action_handlers.append(action_handler)
+
+##########################################################
+# create a WebCLIEngine
+##########################################################
+engine = create_engine(config.core.db_url)
 create_all_tables(engine)
 
 webcli_engine = WebCLIEngine(
     db_engine = engine,
     wsc_manager=WebSocketConnectionManager(),
-    action_handlers=[
-        ConfigHandler(),
-        PySparkActionHandler(
-            stream_id = DEBUG_STREAM_ID,
-            kafka_consumer_group_name = KAFKA_CONSUMER_GROUP_NAME
-        ),
-        MermaidHandler()
-    ]
+    action_handlers = action_handlers
 )
 
 ##########################################################
@@ -118,7 +121,7 @@ async def home_page(request: Request):
             "title": "Web CLI Demo",
             "client_id": client_id,
             "config_map": json.dumps(config_map),
-            "websocket_uri": WEB_SOCKET_URI,
+            "websocket_uri": config.core.websocket_uri,
         }
     )
     if set_client_id:
