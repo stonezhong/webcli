@@ -105,10 +105,10 @@ async def home_page(request: Request):
     client_id = request.cookies.get("client-id")
     if client_id is None:
         client_id = str(uuid.uuid4())
-        logger.debug(f"f{log_prefix}: client-id cookie not found, generate one, it is {client_id}")
+        logger.debug(f"{log_prefix}: client-id cookie not found, generate one, it is {client_id}")
         set_client_id = True
     else:
-        logger.debug(f"f{log_prefix}: client-id is {client_id}")
+        logger.debug(f"{log_prefix}: client-id is {client_id}")
 
     ahcs = await webcli_engine.get_action_handler_configurations(client_id)
     config_map = {
