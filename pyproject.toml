@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "webcli2"
-version = "0.0.14"
+version = "0.0.15"
 authors = [
   { name="Stone Zhong", email="stone.zhong@gmail.com" },
 ]
@@ -32,6 +32,19 @@ dependencies = [
 
 [project.scripts]
 webcli = "webcli2.cli:webcli"
+
+ [tool.hatch.build.targets.wheel]
+exclude = [
+    "src/webcli2/web/.babelrc",
+    "src/webcli2/web/.gitignore",
+    "src/webcli2/web/README.md",
+    "src/webcli2/web/package.json",
+    "src/webcli2/web/package-lock.json",
+    "src/webcli2/web/webpack.config.js",
+    "src/webcli2/web/templates/*",
+    "src/webcli2/web/javascripts/*"
+]
+
 
 [project.urls]
 Homepage = "https://github.com/stonezhong/webcli"
