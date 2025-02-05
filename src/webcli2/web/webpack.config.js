@@ -6,11 +6,13 @@ const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 module.exports = (env, argv) => {
     const isProduction = argv.mode === 'production';
     return {
+         stats: 'detailed',
+
         /****************************************
          * You can generate multiple javascript bundle, each bundle has a unique name
          */
         entry: {
-            "index": "./javascripts/index.js",
+            "home_page": "./javascripts/home_page.js",
             "login_page": "./javascripts/login_page.js",
         },
 
@@ -66,6 +68,9 @@ module.exports = (env, argv) => {
          * Allow imports without specifying extensions
          */
         resolve: {
+            alias: {
+                "@": path.resolve(__dirname, 'javascripts')
+            },
             extensions: ['.js', '.jsx'],
         },
 
@@ -79,7 +84,7 @@ module.exports = (env, argv) => {
                 template: './templates/index.html', // source of the HTML file is here
                 filename: 'templates/index.html',   // specify where is the generated HTML file
                 publicPath: '/dist/',               // index.html will reference the js bundle using <script defer src="/dist/index.js"></script>
-                chunks: ['index']                   // only include javascript bundle for index.js
+                chunks: ['home_page']               // only include javascript bundle for index.js
             }),
             new HtmlWebpackPlugin({
                 template: './templates/login_page.html', // source of the HTML file is here

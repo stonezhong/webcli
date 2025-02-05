@@ -1,0 +1,31 @@
+.split-view-horizontal {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+  }
+  
+  .pane {
+    overflow: auto;
+    width: 100%;
+  }
+  
+  /* .top-pane {
+    background-color: #f0f0f0;
+  }
+  
+  .bottom-pane {
+    background-color: #d0d0d0;
+  } */
+  
+  .divider {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 5px;
+    cursor: row-resize;
+    background-color: #999;
+    z-index: 1;
+    transform: translateY(-50%);
+  }
+  

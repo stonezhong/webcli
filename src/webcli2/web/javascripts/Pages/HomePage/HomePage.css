@@ -1,0 +1,22 @@
+.cli-page {
+	height: 100vh;
+	width: 100%;
+}
+
+.answer-panel {
+	height: 100%;
+	overflow: auto;
+}
+
+.question-panel {
+	height: 100%;
+}
+
+.question-panel--question {
+    font-family: monospace;
+    font-size: 14px;
+    height: 100%;
+}
+.spacebar {
+    height: 12px;
+}
