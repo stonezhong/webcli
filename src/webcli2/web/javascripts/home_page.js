@@ -42,7 +42,7 @@ webCLIClient.registerActionHandler(actionHandler);
 const domNode = document.getElementById('webcli');
 const root = createRoot(domNode);
 root.render(
-    <App 
+    <HomePage
         webCLIClient={webCLIClient} 
     />
 );
