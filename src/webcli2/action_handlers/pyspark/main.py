@@ -13,6 +13,7 @@ from webcli2 import WebCLIEngine, ActionHandler
 from oracle_spark_tools import OciApiKeyClientFactory
 from oracle_spark_tools.cli import CLIPackage, PackageType, CommandType
 from pydantic import ValidationError
+from webcli2.models import User
 
 def get_value(value:Optional[str]) -> Optional[str]:
     return None if value is None else b64decode(value.encode("ascii")).decode("utf-8")
@@ -236,7 +237,7 @@ class PySparkActionHandler(ActionHandler):
     # the "command" field is text
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
-    def handle(self, action_id:int, request:Any):
+    def handle(self, action_id:int, request:Any, user:User):
         log_prefix = "PySparkActionHandler.handle"
         logger.debug(f"{log_prefix}: enter")
         # TODO: if we are not able to send message, we should complete the action, set error code

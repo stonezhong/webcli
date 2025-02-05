@@ -10,6 +10,7 @@ import asyncio
 
 from webcli2 import WebCLIEngine, ActionHandler
 from pydantic import ValidationError
+from webcli2.models import User
 
 import mermaid as md
 from mermaid.graph import Graph
@@ -75,8 +76,8 @@ class MermaidHandler(ActionHandler):
     # the "command" field is text
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
-    def handle(self, action_id:int, request:Any):
-        log_prefix = "MermaidHandler.can_handle"
+    def handle(self, action_id:int, request:Any, user:User):
+        log_prefix = "MermaidHandler.handle"
         logger.debug(f"{log_prefix}: enter")
         # TODO: if we are not able to send message, we should complete the action, set error code
         f = None

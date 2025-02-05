@@ -2,7 +2,7 @@ from typing import Any, Optional
 from datetime import datetime
 
 from ._common import CoreModelBase
-from webcli2.db_models import DBAction, DBActionHandlerConfiguration
+from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser
 
 #############################################################################
 # Represent an action
@@ -36,7 +36,7 @@ class Action(CoreModelBase):
 class ActionHandlerConfiguration(CoreModelBase):
     id: int
     action_handler_name: str
-    client_id: str
+    user_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
     configuration: Optional[dict]
@@ -46,8 +46,31 @@ class ActionHandlerConfiguration(CoreModelBase):
         return ActionHandlerConfiguration(
             id = db_ahc.id,
             action_handler_name = db_ahc.action_handler_name,
-            client_id = db_ahc.client_id,
+            user_id = db_ahc.user_id,
             created_at = db_ahc.created_at,
             updated_at = db_ahc.updated_at,
             configuration = db_ahc.configuration
         )
+
+class User(CoreModelBase):
+    id: int
+    is_active: bool
+    email: str
+    password_version: int
+    password_hash: str
+
+    @classmethod
+    def create(self, db_user:DBUser) -> "User":
+        return User(
+            id = db_user.id,
+            is_active = db_user.is_active,
+            email = db_user.email,
+            password_version = db_user.password_version,
+            password_hash = db_user.password_hash
+        )
+
+class JWTTokenPayload(CoreModelBase):
+    email: str
+    password_version: int
+    sub: str
+    uuid: str

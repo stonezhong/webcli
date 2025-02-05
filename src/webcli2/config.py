@@ -17,6 +17,8 @@ class CoreConfig(BaseModel):
     websocket_uri:str           # client must provide web socket uri, e.g. ws://localhost:8000/ws
     db_url:str
     action_handlers: Dict[str, "ActionHandlerInfo"] = {}
+    private_key: str            # for generating JWT token
+    public_key: str             # for verifying JWT token
 
 class ActionHandlerInfo(BaseModel):
     module_name: str

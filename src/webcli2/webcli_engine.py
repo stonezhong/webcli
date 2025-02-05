@@ -9,13 +9,16 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import asyncio
 from pydantic import BaseModel
+import bcrypt
+import uuid
+import jwt
 
 from sqlalchemy.orm import Session
 from sqlalchemy import Engine
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
-from webcli2.db_models import DBAction, DBActionHandlerConfiguration
-from webcli2.models import Action, ActionHandlerConfiguration
+from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser
+from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload
 from webcli2.websocket import WebSocketConnectionManager
 
 from abc import ABC, abstractmethod
@@ -99,6 +102,102 @@ class ActionHandler(ABC):
         # cli_handler.update_action(None, action_id:int, ...):
         pass # pragma: no cover
 
+class UserManager:
+    db_engine: Engine
+    public_key:str
+    private_key:str
+
+    def __init__(self, *, db_engine:Engine, private_key:str, public_key:str):
+        self.db_engine = db_engine
+        self.private_key = private_key
+        self.public_key = public_key
+
+    def hash_password(self, password:str) -> str:
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(password.encode("utf-8"), salt)
+        return hashed_password.decode("utf-8")
+
+    def verify_password(self, plain_password:str, hashed_password:str) -> bool:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+
+    #######################################################################
+    # Create a new User
+    # It may fail, for example, duplicate email, in case of failure, it returns None
+    # Otherwise, it returns the newly created user.
+    #######################################################################
+    def create_user(self, email, password) -> Optional[User]:
+        with Session(self.db_engine) as session:
+            try:
+                with session.begin():
+                    db_user = DBUser(
+                        is_active = True,
+                        email = email,
+                        password_version = 1,
+                        password_hash = self.hash_password(password),
+                    )
+                    session.add(db_user)
+            except IntegrityError:
+                logger.debug(f"UserManager.create_user: cannot create user due to IntegrityError")
+                db_user = None
+            user = None if db_user is None else User.create(db_user)
+        return user
+    
+    def create_jwt_token(self, user:User) ->str:
+        payload = JWTTokenPayload(
+            email = user.email,
+            password_version = user.password_version,
+            sub = str(user.id),
+            uuid = str(uuid.uuid4())
+        )
+        jwt_token = jwt.encode(
+            payload.model_dump(mode='json'), 
+            self.private_key, 
+            algorithm="RS256"
+        )
+        return jwt_token
+
+    #######################################################################
+    # Verify a JWT token and extract token payload from it
+    # If the JWT token failed the validation, it returns None
+    #######################################################################
+    def extract_payload_from_jwt_token(self, jwt_token:str) -> JWTTokenPayload:
+        try:
+            payload = jwt.decode(jwt_token, self.public_key, algorithms=["RS256"])
+        except jwt.exceptions.InvalidSignatureError:
+            return None
+        return JWTTokenPayload.model_validate(payload)
+
+    #######################################################################
+    # Get user from jwt token
+    # If the JWT token failed the validation, it returns None
+    #######################################################################
+    def get_user_from_jwt_token(self, jwt_token:str) -> User:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                payload = self.extract_payload_from_jwt_token(jwt_token)
+                if payload is None:
+                    return None
+                db_user = session.get(DBUser, int(payload.sub))
+                return User.create(db_user)
+    
+    #######################################################################
+    # If email and password is correct, it returns a User model
+    # Otherwise, it returns None
+    #######################################################################
+    def login(self, email, password) -> Optional[User]:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_users = list(session.query(DBUser)\
+                    .filter(DBUser.email == email)\
+                    .all())
+                users = [User.create(db_user) for db_user in db_users]
+        
+        assert len(users) in (0, 1)
+        if len(users) == 0:
+            return None
+        
+        user = users[0]
+        return user if self.verify_password(password, user.password_hash) else None
 
 class WebCLIEngine:
     db_engine: Engine                               # SQLAlchemy engine
@@ -172,10 +271,10 @@ class WebCLIEngine:
         # the method is responsible to finish the async call, optionally with return_value
         return await v.async_await_return()
     
-    async def async_start_action(self, request:Any) -> Tuple[WebCLIEngineStatus, Optional[Action]]:
+    async def async_start_action(self, request:Any, user:User) -> Tuple[WebCLIEngineStatus, Optional[Action]]:
         log_prefix = "WebCLIEngine:async_start_action"
         logger.debug(f"{log_prefix}: enter")
-        status, action = await self._async_call(self.start_action, request)
+        status, action = await self._async_call(self.start_action, request, user)
         logger.debug(f"{log_prefix}: exit, status={status}, action={action_to_str(action)}")
         return status, action
 
@@ -196,6 +295,7 @@ class WebCLIEngine:
     def _start_action_unsafe(
         self, 
         request:Any,
+        user:User,
         async_call:Optional[AsyncCall]=None
     ) -> Tuple[WebCLIEngineStatus, Optional[Action]]:
         log_prefix = "WebCLIEngine.start_action_unsafe"
@@ -229,6 +329,7 @@ class WebCLIEngine:
                 with session.begin():
                     db_action = DBAction(
                         is_completed = False,
+                        user_id = user.id,
                         created_at = get_utc_now(),
                         completed_at = None,
                         updated_at = None,
@@ -238,6 +339,7 @@ class WebCLIEngine:
                     )
                     session.add(db_action)
                 action = Action.create(db_action)
+                logger.debug(f"{log_prefix}: action(id={action.id}) is created")
         except SQLAlchemyError:
             logger.error(f"{log_prefix}: unable to update database for async action", exc_info=True)
             rs = WebCLIEngineStatus.DB_FAILED
@@ -248,23 +350,24 @@ class WebCLIEngine:
 
         with self.lock:
             # let handler to work in the thread pool
-            logger.debug(f"{log_prefix}: invoking handle in thread pool, handler {found_action_handler.handle}")
-            self.executor.submit(found_action_handler.handle, action.id, request)
+            logger.debug(f"{log_prefix}: invoking handler in thread pool, handler {found_action_handler.handle}")
+            self.executor.submit(found_action_handler.handle, action.id, request, user)
 
             rs = WebCLIEngineStatus.OK
             if async_call is not None:
                 async_call.finish(return_value=(rs, action))
             
-            logger.debug(f"{log_prefix}: exit, status={rs}, action={action_to_str(action)})")
+            logger.debug(f"{log_prefix}: exit, status={rs}, action={action_to_str(action)}")
             return rs, action
 
     def start_action(
         self, 
         request:Any, 
+        user: User,
         async_call:Optional[AsyncCall]=None
     ) -> Tuple[WebCLIEngineStatus, Optional[Action]]:
         try:
-            return self._start_action_unsafe(request, async_call=async_call)
+            return self._start_action_unsafe(request, user, async_call=async_call)
         except:
             logger.error("WebCLIEngine.start_async_action_unsafe: exception captured", exc_info=True)
             raise
@@ -328,7 +431,7 @@ class WebCLIEngine:
         async_call:Optional[AsyncCall]=None
     ) -> WebCLIEngineStatus:
         try:
-            return self._update_action_unsafe(action_id, progress, async_call=async_call)
+            return self._update_action_unsafe(action_id, user, progress, async_call=async_call)
         except:
             logger.error("WebCLIEngine.update_action_unsafe: exception captured", exc_info=True)
             raise
@@ -403,17 +506,17 @@ class WebCLIEngine:
     ####################################################################################################
     # set action handler configuration for a client
     ####################################################################################################
-    def set_action_handler_configuration(self, action_handler_name:str, client_id:str, configuration:Any) -> ActionHandlerConfiguration:
+    def set_action_handler_configuration(self, action_handler_name:str, user_id:int, configuration:Any) -> ActionHandlerConfiguration:
         with Session(self.db_engine) as session:
             with session.begin():
                 db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
                     .filter(DBActionHandlerConfiguration.action_handler_name == action_handler_name)\
-                    .filter(DBActionHandlerConfiguration.client_id == client_id)\
+                    .filter(DBActionHandlerConfiguration.user_id == user_id)\
                     .all())
                 if len(db_ahc_list) == 0:
                     db_ahc = DBActionHandlerConfiguration(
                         action_handler_name = action_handler_name,
-                        client_id = client_id,
+                        user_id = user_id,
                         created_at = get_utc_now(),
                         updated_at = None,
                         configuration = configuration
@@ -428,11 +531,11 @@ class WebCLIEngine:
     ####################################################################################################
     # set action handler configuration for a client
     ####################################################################################################
-    def get_action_handler_configuration(self, action_handler_name:str, client_id:str) -> Optional[ActionHandlerConfiguration]:
+    def get_action_handler_configuration(self, action_handler_name:str, user_id:int) -> Optional[ActionHandlerConfiguration]:
         with Session(self.db_engine) as session:
             db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
                 .filter(DBActionHandlerConfiguration.action_handler_name == action_handler_name)\
-                .filter(DBActionHandlerConfiguration.client_id == client_id)\
+                .filter(DBActionHandlerConfiguration.user_id == user_id)\
                 .all())
             if len(db_ahc_list) == 0:
                 return None
@@ -443,10 +546,10 @@ class WebCLIEngine:
     ####################################################################################################
     # set action handler configuration for a client
     ####################################################################################################
-    async def get_action_handler_configurations(self, client_id:str) -> List[ActionHandlerConfiguration]:
+    async def get_action_handler_configurations(self, user_id:int) -> List[ActionHandlerConfiguration]:
         with Session(self.db_engine) as session:
             db_ahc_list = list(session.query(DBActionHandlerConfiguration)\
-                .filter(DBActionHandlerConfiguration.client_id == client_id)\
+                .filter(DBActionHandlerConfiguration.user_id == user_id)\
                 .all())
             
             return [ActionHandlerConfiguration.create(db_ahc) for db_ahc in db_ahc_list]

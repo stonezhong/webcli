@@ -1,8 +1,8 @@
 from typing import Optional
 from datetime import datetime
 from sqlalchemy import Integer, Identity, String, DateTime, func, Boolean, Enum, Index, JSON, \
-    UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+    UniqueConstraint, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ._common import DBModelBase
 
@@ -25,6 +25,10 @@ class DBAction(DBModelBase):
 
     # each job has a unique ID within the datalake
     id: Mapped[int] = mapped_column("id", Integer, Identity(start=1), primary_key=True)
+
+    # user who created this action
+    user_id:  Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user:     Mapped["DBUser"] = relationship(foreign_keys=[user_id])
 
     # is the action completed?
     is_completed: Mapped[bool] = mapped_column("is_completed", Boolean)
@@ -63,8 +67,8 @@ class DBActionHandlerConfiguration(DBModelBase):
     # which action handler this config is for
     action_handler_name: Mapped[str] = mapped_column("action_handler_name", String)
 
-    # request context
-    client_id: Mapped[str] = mapped_column("client_id", String)
+    user_id:  Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user:     Mapped["DBUser"] = relationship(foreign_keys=[user_id])
 
     # when the configuration is created
     created_at: Mapped[datetime] = mapped_column("created_at", DateTime)
@@ -76,6 +80,19 @@ class DBActionHandlerConfiguration(DBModelBase):
     configuration: Mapped[Optional[JSON]] = mapped_column("configuration", JSON)
 
     __table_args__ = (
-        UniqueConstraint('action_handler_name', 'client_id', name='action_handler_client'),
+        UniqueConstraint('action_handler_name', 'user_id', name='action_handler_user'),
     )
 
+class DBUser(DBModelBase):
+    """
+    Represent a user
+    """
+    __tablename__ = 'users'
+
+    # each cuser has a unique ID
+    id: Mapped[int] = mapped_column("id", Integer, Identity(start=1), primary_key=True)
+
+    is_active: Mapped[bool] = mapped_column("is_active", Boolean)
+    email: Mapped[str] = mapped_column("email", String, unique=True)
+    password_version: Mapped[int] = mapped_column("password_version", Integer)
+    password_hash: Mapped[str] = mapped_column("password_hash", String)

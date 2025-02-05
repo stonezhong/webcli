@@ -7,6 +7,7 @@ import json
 
 from webcli2 import ActionHandler
 from pydantic import ValidationError
+from webcli2.models import User
 
 # Config action handler
 class ConfigRequest(BaseModel):
@@ -52,15 +53,16 @@ class ConfigHandler(ActionHandler):
     # the "command" field is text
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
-    def handle(self, action_id:int, request:Any):
-        log_prefix = "ConfigHandler.can_handle"
+    def handle(self, action_id:int, request:Any, user:User):
+        log_prefix = "ConfigHandler.handle"
         logger.debug(f"{log_prefix}: enter")
 
         config_request = self.parse_request(request)
         if config_request.action == "get":
+            logger.debug(f"{log_prefix}: get config")
             ahc = self.webcli_engine.get_action_handler_configuration(
                 config_request.action_handler_name,
-                config_request.client_id
+                user.id
             )
             if ahc is None:
                 config_response = ConfigResponse(
@@ -84,11 +86,12 @@ class ConfigHandler(ActionHandler):
             return
         
         if config_request.action == "set":
+            logger.debug(f"{log_prefix}: set config")
             try:
                 json_content = json.loads(config_request.content)
                 ahc = self.webcli_engine.set_action_handler_configuration(
                     config_request.action_handler_name,
-                    config_request.client_id,
+                    user.id,
                     json_content
                 )
                 config_response = ConfigResponse(
