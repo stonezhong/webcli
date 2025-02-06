@@ -5,7 +5,7 @@ import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
 import Button from 'react-bootstrap/Button';
-import SplitViewHorizontal from "./SplitView";
+import { SplitViewHorizontal } from "@/Components/SplitView";
 import Spinner from 'react-bootstrap/Spinner';
 import Alert from 'react-bootstrap/Alert';
 import { Action } from '@/ActionHandlers/webcli_client';
