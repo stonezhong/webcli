@@ -217,3 +217,16 @@ def redirect(url):
 </html>
 """
     return HTMLResponse(content=html_content)
+
+##########################################################
+# Endpoint for homepage
+##########################################################
+@app.get("/test", response_class=HTMLResponse)
+async def home_page(request: Request):
+    response = templates.TemplateResponse(
+        "test_page.html", 
+        {
+            "request": request, 
+        }
+    )       
+    return response
