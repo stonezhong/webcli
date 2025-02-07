@@ -12,12 +12,6 @@ from webcli2 import WebCLIEngine, ActionHandler
 from pydantic import ValidationError
 from webcli2.models import User
 
-import mermaid as md
-from mermaid.graph import Graph
-
-
-from webcli2.websocket import WebSocketConnectionManager
-
 # Mermaid action handler
 class MermaidRequest(BaseModel):
     type: Literal["mermaid", "html", "markdown"]
