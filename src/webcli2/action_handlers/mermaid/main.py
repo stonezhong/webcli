@@ -20,13 +20,13 @@ from webcli2.websocket import WebSocketConnectionManager
 
 # Mermaid action handler
 class MermaidRequest(BaseModel):
-    type: Literal["mermaid"]
+    type: Literal["mermaid", "html", "markdown"]
     client_id: str
     command_text: str
 
 class MermaidResponse(BaseModel):
-    type: Literal["mermaid"]
-    svg: str
+    type: Literal["mermaid", "html", "markdown"]
+    content: str
 
 class MermaidHandler(ActionHandler):
     def __init__(self):
@@ -79,29 +79,16 @@ class MermaidHandler(ActionHandler):
     def handle(self, action_id:int, request:Any, user:User):
         log_prefix = "MermaidHandler.handle"
         logger.debug(f"{log_prefix}: enter")
-        # TODO: if we are not able to send message, we should complete the action, set error code
-        f = None
-        try:
-            f = tempfile.NamedTemporaryFile(mode="w", suffix=".svg")
-            f.close()
-            mermaid_request = self.parse_request(request)
-            lines = mermaid_request.command_text.split("\n")
-            graph = Graph('no title',"\n".join(lines[1:]))
-            render = md.Mermaid(graph)
-            render.to_svg(f.name)
 
-            with open(f.name, "rt") as ff:
-                svg = ff.read()
-            mermaid_response = MermaidResponse(type="mermaid", svg = svg)
-            self.webcli_engine.complete_action(action_id, mermaid_response.model_dump(mode="json"))
-            self.webcli_engine.notify_websockt_client(
-                mermaid_request.client_id, 
-                action_id, 
-                mermaid_response
-            )
-            logger.debug(f"{log_prefix}: exit")
-        except:
-            logger.debug(f"{log_prefix}: exception captured", exc_info=True)
-        finally:
-            if f is not None and os.path.isfile(f.name):
-                os.remove(f.name)
+        mermaid_request = self.parse_request(request)
+        mermaid_response = MermaidResponse(
+            type=mermaid_request.type, 
+            content = mermaid_request.command_text
+        )
+        self.webcli_engine.complete_action(action_id, mermaid_response.model_dump(mode="json"))
+        self.webcli_engine.notify_websockt_client(
+            mermaid_request.client_id, 
+            action_id, 
+            mermaid_response
+        )
+        logger.debug(f"{log_prefix}: exit")

@@ -1,5 +1,18 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {BaseActionHandler} from './webcli_client';
+import ReactMarkdown from "react-markdown";
+import mermaid from 'mermaid';
+
+const MermaidDiagram = ({ chart }) => {
+    const ref = useRef(null);
+
+    useEffect(() => {
+        mermaid.initialize({ startOnLoad: true });
+        mermaid.run();
+    }, [chart]);
+
+    return <div className="mermaid" ref={ref}>{chart}</div>;
+};
 
 /********************************************************************************
  * This action handler allows you to display mermaid graph
@@ -24,24 +37,30 @@ export default class MermaidActionHandler extends BaseActionHandler {
             return null;
         }
 
-        const title = lines[0]
-        if (title.trim() == "%mermaid%") {
-            // we are trying to show a diagram
-            // this MUST match MermaidRequest class in python
-            const request = {
-                type: "mermaid",
-                client_id: this.clientId,
-                command_text: text                
-            }
-            return request;
+        const title = lines[0].trim()
+        if (!["%html%", "%mermaid%", "%markdown%"].includes(title)) {
+            return null;
         }
 
-        return null;
+        const request = {
+            type: title.slice(1, -1),
+            client_id: this.clientId,
+            command_text: lines.slice(1).join("\n")
+        }
+        return request;
     }
 
     renderAction(action) {
-        const htmlContent = action.response.svg;
-        return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+        if (action.response.type === "html") {
+            return <div dangerouslySetInnerHTML={{ __html: action.response.content }} />;
+        }
+        if (action.response.type === "markdown") {
+            return <ReactMarkdown>{action.response.content}</ReactMarkdown>;
+        }
+        if (action.response.type === "mermaid") {
+            return <MermaidDiagram chart={action.response.content} />;
+        }
+        return null;
     }
 }
 
