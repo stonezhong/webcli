@@ -16,8 +16,8 @@ export default class PySparkActionHandler extends BaseActionHandler {
             return null;
         }
 
-        const title = lines[0]
-        if ((title.trim() === "%pyspark%") || (title.trim() === "%bash%") || (title.trim() === "%system%")) {
+        const title = lines[0].trim()
+        if ((title === "%pyspark%") || (title === "%bash%") || (title === "%system%")) {
             // we are talking to spark server
             return {
                 type: "spark-cli",
