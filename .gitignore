@@ -2,3 +2,4 @@
 **/*/.DS_Store
 __pycache__/
 /src/webcli2/web/node_modules/
+/src/webcli2/web/dist/vendors-node_modules_mermaid_dist_chunks_mermaid_core_timeline-definition-U7ZMHBDA_mjs.js
