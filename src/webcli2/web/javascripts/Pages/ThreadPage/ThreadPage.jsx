@@ -20,7 +20,7 @@ import {
     getNextValue, dropItemFromReactState, updateMatchingItemsFromReactState, updateMatchingItemsFromReactStateAsync
 } from '@/algo';
 
-import './HomePage.css';
+import './ThreadPage.css';
 
 const logger = pino({
     level: 'debug',
@@ -71,7 +71,7 @@ class ThreadActionWrapper {
  * update action title          It only update the action title (a single action), it does not resync the entire thread
  * create action                It only add the new action to the bottom, it does not resync the entire thread
  */
-export class HomePage extends React.Component {
+export class ThreadPage extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
@@ -263,32 +263,32 @@ export class HomePage extends React.Component {
      * Called when user hit "submit" button
      */
     sendAction = async () => {
-        logger.info("HomePage.sendAction: enter");
+        logger.info("ThreadPage.sendAction: enter");
         const command = this.state.command;
-        logger.info(`HomePage.sendAction: command=${command}`);
+        logger.info(`ThreadPage.sendAction: command=${command}`);
         const [actionHandler, request] = this.getActionRequestFromText(command);
 
         // if no action handler recognize the text, we will ignore it
         if (request === null) {
             // TODO: pop up some error message
             this.addAlert("Unrecognized command");
-            logger.info("HomePage.sendAction: unrecognized command");
-            logger.info("HomePage.sendAction: exit");
+            logger.info("ThreadPage.sendAction: unrecognized command");
+            logger.info("ThreadPage.sendAction: exit");
             return;
         }
 
         try {
             const threadAction = await create_action({thread_id:this.props.threadId, request, title:"question", raw_text:command});
-            logger.info("HomePage.sendAction: server response: ", threadAction);
+            logger.info("ThreadPage.sendAction: server response: ", threadAction);
             this.setState({
                 threadActionWrappers: [...this.state.threadActionWrappers, new ThreadActionWrapper(threadAction)]
             });
-            logger.info("HomePage.sendAction: exit");
+            logger.info("ThreadPage.sendAction: exit");
         } 
         catch(err) {
             // TODO: pop up some error message
             this.addAlert(err.message);
-            logger.info("HomePage.sendAction: error, ", err.message);
+            logger.info("ThreadPage.sendAction: error, ", err.message);
             return;
         }
 
@@ -296,7 +296,7 @@ export class HomePage extends React.Component {
 
     // after component is mounted
     async componentDidMount() {
-        logger.info("HomePage.componentDidMount: enter");
+        logger.info("ThreadPage.componentDidMount: enter");
         
         const thread = await get_thread(this.props.threadId);
         const threadActionWrappers = thread.thread_actions.map(threadAction => new ThreadActionWrapper(threadAction));
@@ -307,8 +307,8 @@ export class HomePage extends React.Component {
 
         this.connect();
 
-        logger.info("HomePage.componentDidMount: websocket is connected");
-        logger.info("HomePage.componentDidMount: exit");
+        logger.info("ThreadPage.componentDidMount: websocket is connected");
+        logger.info("ThreadPage.componentDidMount: exit");
     }
 
     // after component state changes
@@ -320,11 +320,11 @@ export class HomePage extends React.Component {
 
     // after component is unmounted
     componentWillUnmount() {
-        logger.info("HomePage.componentWillUnmount: enter");
+        logger.info("ThreadPage.componentWillUnmount: enter");
         // const notificationManager = this.props.notificationManager;
         // notificationManager.disconnect();
         // console.log("App.componentWillUnmount: websocket is disconnected");
-        logger.info("HomePage.componentWillUnmount: exit");
+        logger.info("ThreadPage.componentWillUnmount: exit");
     }
 
     onActionCompleted = async (actionId, response) => {
@@ -344,9 +344,9 @@ export class HomePage extends React.Component {
      * 
      */
     connect() {
-        logger.info("HomePage.connect: enter");
+        logger.info("ThreadPage.connect: enter");
         if (window.webcli_socket) {
-            logger.info("HomePage.connect: WebSocket is already connected!");
+            logger.info("ThreadPage.connect: WebSocket is already connected!");
             return;
         }
 
@@ -394,7 +394,7 @@ export class HomePage extends React.Component {
             }
             logger.info("websocket.message: exit");
         });
-        logger.info("HomePage.connect: exit");
+        logger.info("ThreadPage.connect: exit");
     }
 
     render() {

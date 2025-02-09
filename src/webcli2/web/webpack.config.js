@@ -12,7 +12,7 @@ module.exports = (env, argv) => {
          * You can generate multiple javascript bundle, each bundle has a unique name
          */
         entry: {
-            "home_page"   : "./javascripts/home_page.js",
+            "thread_page"   : "./javascripts/thread_page.js",
             "login_page"  : "./javascripts/login_page.js",
             "threads_page": "./javascripts/threads_page.js",
             "test_page" : "./javascripts/test_page.js"
@@ -83,30 +83,30 @@ module.exports = (env, argv) => {
              * Specify each HTML file you want to inject javascript bundle here
              */
             new HtmlWebpackPlugin({
-                template: './templates/index.html', // source of the HTML file is here
-                filename: 'templates/index.html',   // specify where is the generated HTML file
-                publicPath: '/dist/',               // index.html will reference the js bundle using <script defer src="/dist/index.js"></script>
-                chunks: ['home_page']               // only include javascript bundle for index.js
+                template: './templates/thread_page.html',       // source of the HTML file is here
+                filename: 'templates/thread_page.html',         // specify where is the generated HTML file under dist directory
+                publicPath: '/dist/',                           // When loading the javascript from this HTML template, where is the js bundle? It will insert like this to the generate HTML template
+                                                                //  <script defer src="/dist/index.js"></script>
+                chunks: ['thread_page']                         // only include javascript bundle for thread_page, see entry section
             }),
             new HtmlWebpackPlugin({
-                template: './templates/login_page.html', // source of the HTML file is here
-                filename: 'templates/login_page.html',   // specify where is the generated HTML file
-                publicPath: '/dist/',               // index.html will reference the js bundle using <script defer src="/dist/index.js"></script>
-                chunks: ['login_page']                   // only include javascript bundle for index.js
+                template: './templates/login_page.html',
+                filename: 'templates/login_page.html',
+                publicPath: '/dist/',
+                chunks: ['login_page']
             }),
             new HtmlWebpackPlugin({
-                template: './templates/threads_page.html',      // source of the HTML file is here
-                filename: 'templates/threads_page.html',        // specify where is the generated HTML file
-                publicPath: '/dist/',                           // html page will reference the js bundle using <script defer src="/dist/threads_page.js"></script>
-                chunks: ['threads_page']                        // only include javascript bundle for threads_page.js
+                template: './templates/threads_page.html',
+                filename: 'templates/threads_page.html',
+                publicPath: '/dist/',
+                chunks: ['threads_page']
             }),
             new HtmlWebpackPlugin({
-                template: './templates/test_page.html', // source of the HTML file is here
-                filename: 'templates/test_page.html',   // specify where is the generated HTML file
-                publicPath: '/dist/',               // index.html will reference the js bundle using <script defer src="/dist/index.js"></script>
-                chunks: ['test_page']                   // only include javascript bundle for index.js
+                template: './templates/test_page.html',
+                filename: 'templates/test_page.html',
+                publicPath: '/dist/',
+                chunks: ['test_page']
             }),
         ],
-    };           
+    };
 };
-

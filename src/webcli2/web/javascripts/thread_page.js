@@ -1,7 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { HomePage } from './Pages/HomePage';
-import { StrictMode } from 'react';
+import { ThreadPage } from './Pages/ThreadPage';
 import MermaidActionHandler from "./ActionHandlers/MermaidActionHandler";
 import PySparkActionHandler from "./ActionHandlers/PySparkActionHandler";
 import ConfigActionHandler from './ActionHandlers/ConfigActionHandler';
@@ -40,18 +39,10 @@ actionHandlerMap.set(actionHandler.getName(), actionHandler);
 const domNode = document.getElementById('webcli');
 const root = createRoot(domNode);
 root.render(
-    <HomePage
+    <ThreadPage
         wsUrl={websocket_uri}
         clientId={client_id}
         actionHandlerMap={actionHandlerMap}
         threadId={thread_id}
     />
 );
-
-// root.render(
-//     <StrictMode>
-//         <App 
-//             webCLIClient={webCLIClient} 
-//         />
-//     </StrictMode>    
-// );

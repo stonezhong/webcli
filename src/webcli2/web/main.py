@@ -129,7 +129,7 @@ async def websocket_endpoint(websocket: WebSocket):
 ##########################################################
 @app.get("/threads/{thread_id}", response_class=HTMLResponse, include_in_schema=False)
 async def thread_page(request: Request, thread_id:int, user:User=Depends(authenticate_or_redirect)):
-    log_prefix = "home_page"
+    log_prefix = "thread_page"
     logger.debug(f"{log_prefix}: enter")
 
     client_id = str(uuid.uuid4())
@@ -140,7 +140,7 @@ async def thread_page(request: Request, thread_id:int, user:User=Depends(authent
         ahc.action_handler_name: ahc.model_dump(mode='json') for ahc in ahcs
     }
     response = templates.TemplateResponse(
-        "index.html", 
+        "thread_page.html", 
         {
             "request": request, 
             "title": "Web CLI Demo",
