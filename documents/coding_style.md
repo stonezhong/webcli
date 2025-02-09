@@ -35,3 +35,10 @@ def config_action_handlers():
 config_action_handlers()
 ```
 This way, we can move `action_handlers_config` to inside a function and do not pollute global spaces.
+### Always initialize logger at top
+For eample, always put the following code at the very begining of your python file.
+```python
+import logging
+logger = logging.getLogger(__name__)
+...
+```

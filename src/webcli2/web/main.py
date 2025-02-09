@@ -74,41 +74,44 @@ user_manager = UserManager(
 )
 
 ##########################################################
-# Authenticate user from JWT token or deny
+# Authenticate user
+# If user is authenticated, it returns a User object
+# Otherwise, it returns None
 ##########################################################
-def authenticate_or_deny(request:Request) -> User:
+def authenticate_user(request:Request) -> Optional[User]:
     jwt_token = request.cookies.get("access-token")
     if jwt_token is None:
-        # user is not logged in, send HTTP 403
-        logger.info("authenticate_or_deny: missing cookie access-token")
-        raise HTTPException(status_code=403, detail="Access denied")
+        logger.info(f"authenticate_user: {request.url}, missing cookie access-token for JWT token")
+        return None
 
     user = user_manager.get_user_from_jwt_token(jwt_token)
     if user is None:
         # The JWT token did not pass validation
-        logger.info("authenticate_or_deny: invalid JWT token")
-        raise HTTPException(status_code=403, detail="Access denied")
+        logger.info(f"authenticate_user: {request}, invalid JWT token")
+        return None
 
+    return user
+
+##########################################################
+# Authenticate user from JWT token or deny
+##########################################################
+def authenticate_or_deny(request:Request) -> User:
+    user = authenticate_user(request)
+    if user is None:
+        logger.info(f"authenticate_or_deny: {request.url}, user not authenticated, access denied")
+        raise HTTPException(status_code=403, detail="Access denied")
     return user
 
 ##########################################################
 # Authenticate user from JWT token or redirect to login page
 ##########################################################
 def authenticate_or_redirect(request:Request) -> Union[User, HTMLResponse]:
-    jwt_token = request.cookies.get("access-token")
-    if jwt_token is None:
+    user = authenticate_user(request)
+    if user is None:
         # user is not logged in, redirect user to login page
         response = redirect("/login")
-        logger.debug("authenticate_or_redirect: JWT token not found, redirect user to login page")
-        return response
-    
-    logger.debug("authenticate_or_redirect: JWT token found")
-    user = user_manager.get_user_from_jwt_token(jwt_token)
-    if user is None:
-        response = redirect("/login")
-        logger.debug("authenticate_or_redirect: JWT token did not pass validation")
-        return response
-    
+        logger.info(f"authenticate_or_redirect: {request.url}, user not authenticated, redirect to login page")
+        return response   
     return user
 
 ##########################################################
@@ -138,9 +141,9 @@ async def websocket_endpoint(websocket: WebSocket):
 # Endpoint for homepage
 ##########################################################
 @app.get("/threads/{thread_id}", response_class=HTMLResponse, include_in_schema=False)
-async def thread_page(request: Request, thread_id:int, user:User=Depends(authenticate_or_redirect)):
-    log_prefix = "thread_page"
-    logger.debug(f"{log_prefix}: enter")
+async def thread_page(request: Request, thread_id:int, user:Union[User, HTMLResponse]=Depends(authenticate_or_redirect)):
+    if isinstance(user, HTMLResponse):
+        return user
 
     client_id = str(uuid.uuid4())
     user_id = user.id
@@ -160,32 +163,15 @@ async def thread_page(request: Request, thread_id:int, user:User=Depends(authent
             "websocket_uri": config.core.websocket_uri,
         }
     )       
-    logger.debug(f"{log_prefix}: exit")
     return response
 
 ##########################################################
 # Endpoint for thread list page
 ##########################################################
 @app.get("/threads", response_class=HTMLResponse, include_in_schema=False)
-async def threads_page(request: Request):
-    log_prefix = "threads_page"
-    logger.debug(f"{log_prefix}: enter")
-
-    jwt_token = request.cookies.get("access-token")
-    if jwt_token is None:
-        # user is not logged in, redirect user to login page
-        response = redirect("/login")
-        logger.debug(f"{log_prefix}: JWT token not found, redirect user to login page")
-        logger.debug(f"{log_prefix}: exit")
-        return response
-    
-    logger.debug(f"{log_prefix}: JWT token found")
-    user = user_manager.get_user_from_jwt_token(jwt_token)
-    if user is None:
-        response = redirect("/login")
-        logger.debug(f"{log_prefix}: JWT token did not pass validation")
-        logger.debug(f"{log_prefix}: exit")
-        return response
+async def threads_page(request: Request, user:Union[User, HTMLResponse]=Depends(authenticate_or_redirect)):
+    if isinstance(user, HTMLResponse):
+        return user
 
     response = templates.TemplateResponse(
         "threads_page.html", 
@@ -193,25 +179,17 @@ async def threads_page(request: Request):
             "request": request, 
         }
     )       
-    logger.debug(f"{log_prefix}: exit")
     return response
 
 ##########################################################
 # Endpoint for login page
 ##########################################################
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
-async def login_page(request: Request):
-    log_prefix = "login_page"
-    logger.debug(f"{log_prefix}: enter")
-
-    jwt_token = request.cookies.get("access-token")
-    if jwt_token is not None:
-        user = user_manager.get_user_from_jwt_token(jwt_token)
-        if user is not None:
-            response = redirect("/")
-            logger.debug(f"{log_prefix}: JWT token found, redirect user to home page")
-            logger.debug(f"{log_prefix}: exit")
-            return response
+async def login_page(request: Request, user:Optional[User]=Depends(authenticate_user)):
+    if user is not None:
+        response = redirect("/threads")
+        logger.info(f"login_page: User already authenticated, redirect to threads page")
+        return response
     
     # either no JWT token or invalid JWT token
     response = templates.TemplateResponse(
@@ -220,24 +198,21 @@ async def login_page(request: Request):
             "request": request, 
         }
     )
-        
-    logger.debug(f"{log_prefix}: exit")
     return response
 
 @app.post("/login", response_class=HTMLResponse, include_in_schema=False)
-async def login_action(
+async def do_login(
     username: str = Form(...), 
     password: str = Form(...)
 ):
-    log_prefix = "login_action"
-    logger.debug(f"{log_prefix}: enter")
-
     user = user_manager.login(username, password)
     if user is None:
+        logger.info(f"do_login: Incorrect username and/or password")
         raise HTTPException(status_code=401, detail="Incorret username or password")
 
     jwt_token = user_manager.create_jwt_token(user)
-    response = redirect("/")
+    logger.info(f"do_login: User {username} logged in")
+    response = redirect("/threads")
     response.set_cookie(
         key="access-token",
         value=jwt_token,
@@ -248,7 +223,6 @@ async def login_action(
         samesite="strict",      # optional: 'strict' | 'lax' | 'none'
     )
         
-    logger.debug(f"{log_prefix}: exit")
     return response
 
 def redirect(url) -> HTMLResponse:
