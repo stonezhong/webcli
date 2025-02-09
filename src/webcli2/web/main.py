@@ -19,8 +19,8 @@ from contextlib import asynccontextmanager
 
 from webcli2 import WebCLIEngine, WebCLIEngineStatus, WebSocketConnectionManager, UserManager
 from webcli2.action_handlers.config import ConfigHandler
-from webcli2.models import Thread, User, CreateThreadRequest, Action, CreateActionRequest, PatchActionRequest, \
-    PatchThreadActionRequest, ThreadAction
+from webcli2.models import Thread, User, Action, ThreadAction
+from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest
 from fastapi import WebSocket
 
 from webcli2.config import load_config

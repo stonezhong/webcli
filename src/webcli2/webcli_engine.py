@@ -20,9 +20,8 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import func
 
 from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser, DBThread, DBThreadAction
-from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload, Thread, \
-    CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest, \
-    ThreadAction
+from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload, Thread, ThreadAction
+from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest
 from webcli2.websocket import WebSocketConnectionManager
 
 from abc import ABC, abstractmethod
