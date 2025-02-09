@@ -1,7 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 from pydantic import BaseModel, ValidationError
 
 from webcli2 import WebCLIEngine, ActionHandler
@@ -11,6 +11,7 @@ from webcli2.models import User
 from openai import OpenAI
 
 class OpenAIRequest(BaseModel):
+    type: Literal["openai"]
     client_id: str
     command_text: str
 

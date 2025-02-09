@@ -12,8 +12,9 @@ module.exports = (env, argv) => {
          * You can generate multiple javascript bundle, each bundle has a unique name
          */
         entry: {
-            "home_page" : "./javascripts/home_page.js",
-            "login_page": "./javascripts/login_page.js",
+            "home_page"   : "./javascripts/home_page.js",
+            "login_page"  : "./javascripts/login_page.js",
+            "threads_page": "./javascripts/threads_page.js",
             "test_page" : "./javascripts/test_page.js"
         },
 
@@ -92,6 +93,12 @@ module.exports = (env, argv) => {
                 filename: 'templates/login_page.html',   // specify where is the generated HTML file
                 publicPath: '/dist/',               // index.html will reference the js bundle using <script defer src="/dist/index.js"></script>
                 chunks: ['login_page']                   // only include javascript bundle for index.js
+            }),
+            new HtmlWebpackPlugin({
+                template: './templates/threads_page.html',      // source of the HTML file is here
+                filename: 'templates/threads_page.html',        // specify where is the generated HTML file
+                publicPath: '/dist/',                           // html page will reference the js bundle using <script defer src="/dist/threads_page.js"></script>
+                chunks: ['threads_page']                        // only include javascript bundle for threads_page.js
             }),
             new HtmlWebpackPlugin({
                 template: './templates/test_page.html', // source of the HTML file is here

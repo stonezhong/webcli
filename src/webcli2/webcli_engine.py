@@ -5,6 +5,7 @@ from typing import Dict, Tuple, Any, List, Optional
 from datetime import datetime, timezone
 from asyncio import Event, get_event_loop, AbstractEventLoop, wait_for, TimeoutError
 import enum
+from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import asyncio
@@ -14,11 +15,14 @@ import uuid
 import jwt
 
 from sqlalchemy.orm import Session
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select, delete
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy import func
 
-from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser
-from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload
+from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser, DBThread, DBThreadAction
+from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload, Thread, \
+    CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest, \
+    ThreadAction
 from webcli2.websocket import WebSocketConnectionManager
 
 from abc import ABC, abstractmethod
@@ -206,9 +210,9 @@ class WebCLIEngine:
     event_loop: Optional[AbstractEventLoop]         # The current main loop
     lock: threading.Lock                            # a global lock
     require_shutdown: Optional[bool]                # True if shutdown has been requested
-    action_handlers: List[ActionHandler]            # List of registered action handler
+    action_handlers: Dict[str, ActionHandler]       # action handlers map
 
-    def __init__(self, *, db_engine:Engine, wsc_manager:WebSocketConnectionManager, action_handlers:List[ActionHandler]):
+    def __init__(self, *, db_engine:Engine, wsc_manager:WebSocketConnectionManager, action_handlers:Dict[str, ActionHandler]):
         log_prefix = "WebCLIEngine.__init__"
         logger.debug(f"{log_prefix}: enter")
         self.db_engine = db_engine
@@ -217,7 +221,7 @@ class WebCLIEngine:
         self.event_loop = None
         self.lock = threading.Lock()
         self.require_shutdown = None
-        self.action_handlers = action_handlers[:]
+        self.action_handlers = copy(action_handlers)
         logger.debug(f"{log_prefix}: exit")
 
 
@@ -232,11 +236,11 @@ class WebCLIEngine:
         logger.debug(f"{log_prefix}: event loop is {self.event_loop}")
 
         # register all action handler
-        for action_handler in self.action_handlers:
+        for action_handler_name, action_handler in self.action_handlers.items():
             # TODO: if an action failed to startup, remove it since it may not handle
             #       request properly
             try:
-                logger.debug(f"{log_prefix}: startup action handler {action_handler}")
+                logger.debug(f"{log_prefix}: startup action handler, name={action_handler_name},  {action_handler}")
                 action_handler.startup(self)
             except Exception:
                 # we will tolerate if action handler failed to startup
@@ -251,9 +255,9 @@ class WebCLIEngine:
         self.require_shutdown = True
 
         # shutdown all action handler
-        for action_handler in reversed(self.action_handlers):
+        for action_handler_name, action_handler in self.action_handlers.items():
             try:
-                logger.debug(f"{log_prefix}: shutdown action handler {action_handler}")
+                logger.debug(f"{log_prefix}: shutdown action handler, name={action_handler_name},  {action_handler}")
                 action_handler.shutdown()
             except Exception:
                 # we will tolerate if action handler failed to shutdown
@@ -261,6 +265,90 @@ class WebCLIEngine:
         # TODO: what if some request are stuck, shall we hang on shutdown?
         self.executor.shutdown(wait=True)
         logger.debug(f"{log_prefix}: exit")
+
+    #######################################################################
+    # Thread management
+    #######################################################################
+    async def list_threads(self, user:User) -> List[Thread]:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_threads = list(session.query(DBThread)\
+                    .filter(DBThread.user_id == user.id)\
+                    .all())
+                threads = [Thread.create(db_thread) for db_thread in db_threads]
+        return threads
+    
+    async def create_thread(self, create_thread_request:CreateThreadRequest, user:User) -> Thread:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_thread = DBThread(
+                    user_id = user.id,
+                    created_at = get_utc_now(),
+                    title = create_thread_request.title
+                )
+                session.add(db_thread)
+            thread = Thread.create(db_thread)
+        return thread
+
+    async def get_thread(self, thread_id:int) -> Optional[Thread]:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_thread = session.get(DBThread, thread_id)
+                db_thread_actions = session.scalars(
+                    select(DBThreadAction)\
+                        .join(DBThreadAction.action)\
+                        .where(DBThreadAction.thread_id == thread_id)\
+                        .order_by(DBThreadAction.display_order)
+                )
+            
+            if db_thread is None:
+                thread = None
+            else:
+                thread = Thread.create(db_thread, db_thread_actions=db_thread_actions)
+        return thread
+
+    async def remove_action_from_thread(self, thread_id:int, action_id:int) -> None:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                stmt = delete(DBThreadAction)\
+                    .where(DBThreadAction.thread_id == thread_id)\
+                    .where(DBThreadAction.action_id == action_id)
+                session.execute(stmt)
+        return None
+
+    async def patch_action(self, action_id:int, request_data:PatchActionRequest) -> Optional[Action]:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_action:DBAction = session.get(DBAction, action_id)
+                if db_action is None:
+                    return None
+                db_action.title = request_data.title
+                session.add(db_action)
+            action = Action.create(db_action)
+        return action
+
+    async def patch_thread_action(self, thread_id:int, action_id:int, request_data:PatchThreadActionRequest) -> Optional[ThreadAction]:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_thread_action = session.scalars(
+                    select(DBThreadAction)\
+                        .where(DBThreadAction.thread_id == thread_id)\
+                        .where(DBThreadAction.action_id == action_id)
+                ).one()
+                if db_thread_action is None:
+                    return None
+                
+                changes = 0
+                if request_data.show_question is not None:
+                    db_thread_action.show_question = request_data.show_question
+                    changes += 1
+                if request_data.show_answer is not None:
+                    db_thread_action.show_answer = request_data.show_answer
+                    changes += 1
+                if changes > 0:
+                    session.add(db_thread_action)
+            return ThreadAction.create(db_thread_action)
+
 
     #######################################################################
     # Called by async function so they can submit a job to the thread pool
@@ -271,10 +359,10 @@ class WebCLIEngine:
         # the method is responsible to finish the async call, optionally with return_value
         return await v.async_await_return()
     
-    async def async_start_action(self, request:Any, user:User) -> Tuple[WebCLIEngineStatus, Optional[Action]]:
+    async def async_start_action(self, request:CreateActionRequest, user:User, thread_id:int) -> Tuple[WebCLIEngineStatus, Optional[ThreadAction]]:
         log_prefix = "WebCLIEngine:async_start_action"
         logger.debug(f"{log_prefix}: enter")
-        status, action = await self._async_call(self.start_action, request, user)
+        status, action = await self._async_call(self.start_action, request, user, thread_id)
         logger.debug(f"{log_prefix}: exit, status={status}, action={action_to_str(action)}")
         return status, action
 
@@ -294,10 +382,11 @@ class WebCLIEngine:
 
     def _start_action_unsafe(
         self, 
-        request:Any,
+        request:CreateActionRequest,
         user:User,
+        thread_id:int,
         async_call:Optional[AsyncCall]=None
-    ) -> Tuple[WebCLIEngineStatus, Optional[Action]]:
+    ) -> Tuple[WebCLIEngineStatus, Optional[ThreadAction]]:
         log_prefix = "WebCLIEngine.start_action_unsafe"
         #############################################################
         # Start an action
@@ -311,9 +400,11 @@ class WebCLIEngine:
             return rs, None
         
         found_action_handler = None
-        for action_handler in self.action_handlers:
-            if action_handler.can_handle(request):
+        found_action_handler_name = None
+        for action_handler_name, action_handler in self.action_handlers.items():
+            if action_handler.can_handle(request.request):
                 found_action_handler = action_handler
+                found_action_handler_name = action_handler_name
                 logger.debug(f"{log_prefix}: found action handler, it is {found_action_handler}")
                 break
         if found_action_handler is None:
@@ -322,24 +413,46 @@ class WebCLIEngine:
                 async_call.finish(return_value=(rs, None))
             logger.debug(f"{log_prefix}: exit, status={rs}, action=None")
             return rs, None
-
+        
         # persist async action
         try:
             with Session(self.db_engine) as session:
                 with session.begin():
+
+                    # try to make sure the new action has the greatest display order within the thread
+                    q = select(
+                        func.max(DBThreadAction.display_order)
+                    ).where(DBThreadAction.thread_id == thread_id)
+                    old_max_display_order = session.scalars(q).one()
+                    if old_max_display_order is None:
+                        display_order = 1
+                    else:
+                        display_order = old_max_display_order + 1
+
                     db_action = DBAction(
+                        handler_name = found_action_handler_name,
                         is_completed = False,
                         user_id = user.id,
                         created_at = get_utc_now(),
                         completed_at = None,
                         updated_at = None,
-                        request = request,
+                        request = request.request,
+                        title = request.title,
+                        raw_text = request.raw_text,
                         response = None,
                         progress = None
                     )
                     session.add(db_action)
-                action = Action.create(db_action)
-                logger.debug(f"{log_prefix}: action(id={action.id}) is created")
+                    db_thread_action = DBThreadAction(
+                        thread_id=thread_id,
+                        action = db_action,
+                        display_order = display_order,
+                        show_question = False,
+                        show_answer = True
+                    )
+                    session.add(db_thread_action)
+                thread_action = ThreadAction.create(db_thread_action)
+                logger.debug(f"{log_prefix}: action(id={thread_action.action.id}) is created")
         except SQLAlchemyError:
             logger.error(f"{log_prefix}: unable to update database for async action", exc_info=True)
             rs = WebCLIEngineStatus.DB_FAILED
@@ -351,23 +464,24 @@ class WebCLIEngine:
         with self.lock:
             # let handler to work in the thread pool
             logger.debug(f"{log_prefix}: invoking handler in thread pool, handler {found_action_handler.handle}")
-            self.executor.submit(found_action_handler.handle, action.id, request, user)
+            self.executor.submit(found_action_handler.handle, thread_action.action.id, request.request, user)
 
             rs = WebCLIEngineStatus.OK
             if async_call is not None:
-                async_call.finish(return_value=(rs, action))
+                async_call.finish(return_value=(rs, thread_action))
             
-            logger.debug(f"{log_prefix}: exit, status={rs}, action={action_to_str(action)}")
-            return rs, action
+            logger.debug(f"{log_prefix}: exit, status={rs}, action={action_to_str(thread_action.action)}")
+            return rs, thread_action
 
     def start_action(
         self, 
-        request:Any, 
+        request:CreateActionRequest, 
         user: User,
+        thread_id:int,
         async_call:Optional[AsyncCall]=None
-    ) -> Tuple[WebCLIEngineStatus, Optional[Action]]:
+    ) -> Tuple[WebCLIEngineStatus, Optional[ThreadAction]]:
         try:
-            return self._start_action_unsafe(request, user, async_call=async_call)
+            return self._start_action_unsafe(request, user, thread_id, async_call=async_call)
         except:
             logger.error("WebCLIEngine.start_async_action_unsafe: exception captured", exc_info=True)
             raise

@@ -63,7 +63,7 @@ def webcli():
     )
     parser.add_argument(
         "action", type=str, help="Specify action",
-        choices=['start', 'init-db', 'create-user', 'test'],
+        choices=['start', 'init-db', 'create-user'],
         nargs=1
     )
     parser.add_argument(
@@ -125,3 +125,22 @@ def create_user(args):
 #     )
 #     t = um.extract_payload_from_jwt_token(jwt_token)
 #     print(t)
+
+# def test(args):
+#     from sqlalchemy import Engine, select, func
+#     from sqlalchemy.orm import Session
+#     from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser, DBThread, DBThreadAction
+#     config = load_config()
+#     db_engine = create_engine(config.core.db_url)
+#     with Session(db_engine) as session:
+#         with session.begin():
+#             q = select(
+#                 func.max(DBThreadAction.display_order)
+#             ).where(DBThreadAction.thread_id == 11)
+
+#             v = session.scalars(q).one()
+#             print(v)
+
+
+
+

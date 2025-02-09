@@ -79,15 +79,36 @@ export default class ConfigActionHandler extends BaseActionHandler {
         return <pre>{`Error: ${action.response.error_message}`}</pre>;
     }
 
+    /*******************
+     * Get action handler's config, if found, return a JSON for the config
+     * otherwise, return null.
+     */
+    getActionHandlerConfig(actionHandlerName) {
+        if (!this.actionHandlerMap.has(actionHandlerName)) {
+            return null;
+        }
+        return this.actionHandlerMap.get(actionHandlerName).getConfig();
+    }
+
+    /*******************
+     * Set action handler config
+     */
+    setActionHandlerConfig(actionHandlerName, config) {
+        if (!this.actionHandlerMap.has(actionHandlerName)) {
+            return;
+        }
+        this.actionHandlerMap.get(actionHandlerName).setConfig(config);
+    }
+
     /*********************************************
      * Called when an action is completed
      * action:   The action object. An Action instance, but response is null
      * response: The response from server
      */
     async onActionCompleted(action, response) {
-        const actionHandlerName = action.request.action_handler_name;
+        const actionHandlerName = action.handler_name;
         if (action.request.action === "get") {
-            const config = this.webcliClient.getActionHandlerConfig(actionHandlerName);
+            const config = this.getActionHandlerConfig(actionHandlerName);
             if (config === null) {
                 action.response = {
                     succeeded: false,
@@ -105,7 +126,7 @@ export default class ConfigActionHandler extends BaseActionHandler {
         action.response = response;
         if (response.succeeded) {
             const config = JSON.parse(response.content);
-            this.webcliClient.setActionHandlerConfig(actionHandlerName, config);
+            this.setActionHandlerConfig(actionHandlerName, config);
         }
         return;
     }

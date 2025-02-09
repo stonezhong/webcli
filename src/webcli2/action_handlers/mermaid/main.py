@@ -4,9 +4,6 @@ logger = logging.getLogger(__name__)
 from typing import Any, Optional, Literal
 from base64 import b64encode, b64decode
 from pydantic import BaseModel, ValidationError
-import os
-import tempfile
-import asyncio
 
 from webcli2 import WebCLIEngine, ActionHandler
 from pydantic import ValidationError

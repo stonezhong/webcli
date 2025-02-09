@@ -30,6 +30,9 @@ class DBAction(DBModelBase):
     user_id:  Mapped[int] = mapped_column(ForeignKey("users.id"))
     user:     Mapped["DBUser"] = relationship(foreign_keys=[user_id])
 
+    # what is the name of the action handler that handles this action?
+    handler_name: Mapped[str] = mapped_column("handler_name", String)
+
     # is the action completed?
     is_completed: Mapped[bool] = mapped_column("is_completed", Boolean)
 
@@ -42,8 +45,15 @@ class DBAction(DBModelBase):
     # when the event is created
     updated_at: Mapped[Optional[datetime]] = mapped_column("updated_at", DateTime)
 
-    # request context
+    # request context, action handler's javascript parse the user input text and 
+    # extract this request
     request: Mapped[JSON] = mapped_column("request", JSON)
+
+    # title
+    title: Mapped[str] = mapped_column("title", String)
+
+    # the user input text
+    raw_text: Mapped[str] = mapped_column("raw_text", String)
 
     # response context
     response: Mapped[Optional[JSON]] = mapped_column("response", JSON)
@@ -96,3 +106,40 @@ class DBUser(DBModelBase):
     email: Mapped[str] = mapped_column("email", String, unique=True)
     password_version: Mapped[int] = mapped_column("password_version", Integer)
     password_hash: Mapped[str] = mapped_column("password_hash", String)
+
+class DBThread(DBModelBase):
+    """
+    Represent a thread
+    A thread contains bunch of actions around the same context
+    """
+    __tablename__ = 'threads'
+
+    id: Mapped[int] = mapped_column("id", Integer, Identity(start=1), primary_key=True)
+
+    # user who created this action
+    user_id:  Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user:     Mapped["DBUser"] = relationship(foreign_keys=[user_id])
+
+    # when the thread is created
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime)
+
+    title: Mapped[str] = mapped_column("title", String)
+
+class DBThreadAction(DBModelBase):
+    """
+    Represent a thread, action registry table
+    """
+    __tablename__ = 'thread-action-regs'
+
+    id: Mapped[int] = mapped_column("id", Integer, Identity(start=1), primary_key=True)
+
+    thread_id:  Mapped[int] = mapped_column(ForeignKey("threads.id"))
+    action_id:  Mapped[int] = mapped_column(ForeignKey("async-actions.id"))
+    action:     Mapped["DBAction"] = relationship(foreign_keys=[action_id])
+
+    # within the thread, the display order of this action
+    display_order: Mapped[int] = mapped_column("display_order", Integer)
+
+    show_question: Mapped[bool] = mapped_column("show_question", Boolean)
+    show_answer:   Mapped[bool] = mapped_column("show_answer", Boolean)
+

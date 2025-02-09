@@ -3,7 +3,6 @@ import pino from 'pino';
 import Form from 'react-bootstrap/Form';
 import Button from 'react-bootstrap/Button';
 import Stack from 'react-bootstrap/Stack';
-import Accordion from 'react-bootstrap/Accordion';
 
 const logger = pino({
     level: 'debug',
@@ -37,8 +36,7 @@ export class ActionWrapper {
     */
     constructor(action) {
         this.action = action;
-        this.minimized = false;     // is the entire q-a minimized
-        this.show_question = true;  // show question?
+        this.show_question = false;  // show question?
         this.show_answer = true;    // show answer?
         this.editing_title = false;  // editing title?
         this.title = "question";    // the section title
@@ -66,16 +64,6 @@ export class WebCLIClient {
 
     deleteAction = async (actionWrapper) => {
         this.actionWrappers = this.actionWrappers.filter(thisActionWrapper => thisActionWrapper.action.id !== actionWrapper.action.id)
-        await this.onActionsUpdated();
-    }
-
-    setActionMinimized = async (actionWrapper, minimized) => {
-        this.actionWrappers = this.actionWrappers.map(thisActionWrapper => {
-            if (thisActionWrapper.action.id === actionWrapper.action.id) {
-                thisActionWrapper.minimized = minimized;
-            }
-            return thisActionWrapper;
-        });
         await this.onActionsUpdated();
     }
 
@@ -205,15 +193,6 @@ export class WebCLIClient {
                 <Form.Check
                     inline
                     type="checkbox"
-                    label="Minimized"
-                    checked={actionWrapper.minimized}
-                    onChange={async event => {
-                        await this.setActionMinimized(actionWrapper, event.target.checked);
-                    }}
-                />
-                <Form.Check
-                    inline
-                    type="checkbox"
                     label="Show Question"
                     checked={actionWrapper.show_question}
                     onChange={async event => {
@@ -240,10 +219,10 @@ export class WebCLIClient {
                 />
             </div>
             {
-                (!actionWrapper.minimized && actionWrapper.show_question)?<pre>{action.text}</pre>:null
+                (actionWrapper.show_question)?<pre>{action.text}</pre>:null
             }
             {
-                (!actionWrapper.minimized && actionWrapper.show_answer)?((action.response === null)?this.renderPendingAction(action):actionHandler.renderAction(action)):null
+                (actionWrapper.show_answer)?((action.response === null)?this.renderPendingAction(action):actionHandler.renderAction(action)):null
             }
         </div>;
 
@@ -375,7 +354,6 @@ export class BaseActionHandler {
     constructor(clientId) {
         this.clientId = clientId;
         this.config = {};
-        this.webcliClient = null;
     }
 
     /*********************************************
@@ -412,13 +390,6 @@ export class BaseActionHandler {
      */
     renderAction(action) {
         throw new Exception("derived class to implement");
-    }
-
-    /*********************************************
-     * Called when an action is registered via registerActionHandler
-     */
-    onRegister(webCliClient) {
-        this.webcliClient = webCliClient;
     }
 
     /*********************************************
