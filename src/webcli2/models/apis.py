@@ -11,6 +11,7 @@ class PatchActionRequest(CoreModelBase):
 
 class CreateThreadRequest(CoreModelBase):
     title: str
+    description: str
 
 class CreateActionRequest(CoreModelBase):
     title: str

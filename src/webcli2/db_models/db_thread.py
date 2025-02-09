@@ -21,4 +21,5 @@ class DBThread(DBModelBase):
     created_at: Mapped[datetime] = mapped_column("created_at", DateTime)
 
     title: Mapped[str] = mapped_column("title", String)
+    description: Mapped[str] = mapped_column("description", String)
 

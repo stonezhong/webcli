@@ -1,13 +1,14 @@
 import _ from "lodash";
 import React from 'react';
 import Container from 'react-bootstrap/Container';
-import Form from 'react-bootstrap/Form';
+import Card from 'react-bootstrap/Card';
 import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
+import { list_threads, create_thread, delete_thread } from "@/apis";
 import Button from 'react-bootstrap/Button';
-import { list_threads } from "@/apis";
 
-import './ThreadsPage.css';
+import '@/global.scss';
+import './ThreadsPage.scss';
 
 export class ThreadsPage extends React.Component {
     constructor(props) {
@@ -19,26 +20,52 @@ export class ThreadsPage extends React.Component {
 
     // after component is mounted
     async componentDidMount() {
-        console.log("ThreadsPage.componentDidMount: enter");
         const threads = await list_threads();
         this.setState({threads:threads})
-        console.log("ThreadsPage.componentDidMount: exit");
     }
 
-    // after component state changes
-    componentDidUpdate(prevProps, prevState) {
-        // commented since it is called too often
-        // console.log("App.componentDidUpdate: enter");
-        // console.log("App.componentDidUpdate: exit");
+    do_create_thread = async () => {
+        await create_thread({title:"no title", description:"no description"});
+        const threads = await list_threads();
+        this.setState({threads:threads})
+    };
+
+    do_delete_thread = async id => {
+        await delete_thread({id});
+        const threads = await list_threads();
+        this.setState({threads:threads})
+    };
+
+    render_thread(thread) {       
+        const ret = <Col xs={3} key={thread.id}><Card data-purpose='thread'>
+            <Card.Body>
+                <Card.Title>
+                    {thread.title}
+                </Card.Title>
+                <Card.Text>
+                </Card.Text>
+                <Card.Link href={`/threads/${thread.id}`}>Open</Card.Link>
+                <Card.Link href="#" onClick={async event=> {
+                    await this.do_delete_thread(thread.id);
+                }}>Delete</Card.Link>
+            </Card.Body>
+        </Card></Col>;
+        return ret;
     }
 
-    // after component is unmounted
-    componentWillUnmount() {
-        console.log("ThreadsPage.componentWillUnmount: enter");
-        // const notificationManager = this.props.notificationManager;
-        // notificationManager.disconnect();
-        // console.log("App.componentWillUnmount: websocket is disconnected");
-        console.log("ThreadsPage.componentWillUnmount: exit");
+    render_add_thread() {
+        const ret = <Col xs={3}><Card data-purpose='thread'>
+            <Card.Body>
+                <Card.Title>
+                </Card.Title>
+                <Card.Text style={{textAlign: "center"}}>
+                    <Button onClick={this.do_create_thread}>Create New Thread</Button>
+                </Card.Text>
+                <Card.Link style={{visibility: 'hidden'}} href="#">Open</Card.Link>
+                <Card.Link style={{visibility: 'hidden'}} href="#">Delete</Card.Link>
+            </Card.Body>
+        </Card></Col>;
+        return ret;
     }
 
     render() {
@@ -50,15 +77,10 @@ export class ThreadsPage extends React.Component {
                     </Col>
                 </Row>
                 <Row>
-                    <Col>
                     {
-                        this.state.threads.map(thread => 
-                            <div key={thread.id}>
-                                <a href={`/threads/${thread.id}`}>{thread.title}</a>
-                            </div>
-                        )
+                        this.state.threads.map(thread => this.render_thread(thread))
                     }
-                    </Col>
+                    { this.render_add_thread() }
                 </Row>
             </Container>
         );

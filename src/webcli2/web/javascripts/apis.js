@@ -34,6 +34,45 @@ export async function get_thread(id) {
     return ret;
 }
 
+export async function create_thread({title, description}) {
+    /***************
+     * Return:
+     * Thread
+     */
+    const response = await fetch(`/apis/threads`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({title, description}),
+    });
+    if (!response.ok) {
+        throw new Error(`create_thread: Failed to send action to server, status: ${response.status}`);
+    }
+    const thread = await response.json();
+    return thread;
+
+}
+
+export async function delete_thread({id}) {
+    /***************
+     * Return:
+     * None
+     */
+    const response = await fetch(`/apis/threads/${id}`, {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+    if (!response.ok) {
+        throw new Error(`delete_thread: Failed to send action to server, status: ${response.status}`);
+    }
+    const r = await response.json();
+    return null;
+
+}
+
 export async function create_action({thread_id, request, title, raw_text}) {
     const response = await fetch(`/apis/threads/${thread_id}/actions`, {
         method: "POST",

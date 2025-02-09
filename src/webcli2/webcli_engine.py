@@ -283,7 +283,8 @@ class WebCLIEngine:
                 db_thread = DBThread(
                     user_id = user.id,
                     created_at = get_utc_now(),
-                    title = create_thread_request.title
+                    title = create_thread_request.title,
+                    description = create_thread_request.description
                 )
                 session.add(db_thread)
             thread = Thread.create(db_thread)
@@ -305,6 +306,19 @@ class WebCLIEngine:
             else:
                 thread = Thread.create(db_thread, db_thread_actions=db_thread_actions)
         return thread
+
+    async def delete_thread(self, thread_id:int):
+        with Session(self.db_engine) as session:
+            with session.begin():
+                # delete all related thread actions
+                stmt = delete(DBThreadAction)\
+                    .where(DBThreadAction.thread_id == thread_id)
+                session.execute(stmt)
+
+                # delete the thread
+                stmt = delete(DBThread)\
+                    .where(DBThread.id == thread_id)
+                session.execute(stmt)
 
     async def remove_action_from_thread(self, thread_id:int, action_id:int) -> None:
         with Session(self.db_engine) as session:

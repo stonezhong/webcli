@@ -254,8 +254,13 @@ async def create_thread(request:Request, create_thread_request:CreateThreadReque
     thread = await webcli_engine.create_thread(create_thread_request, user)
     return thread
 
+@app.delete("/apis/threads/{thread_id}")
+async def delete_thread(request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
+    await webcli_engine.delete_thread(thread_id)
+    return None
+
 @app.get("/apis/threads/{thread_id}", response_model=Thread)
-async def list_threads(request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
+async def get_thread(request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
     thread = await webcli_engine.get_thread(thread_id)
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")

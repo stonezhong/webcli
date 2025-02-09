@@ -10,6 +10,7 @@ class Thread(CoreModelBase):
     user_id: int
     created_at: datetime
     title: str
+    description: str
 
     thread_actions: Optional[List[ThreadAction]]
 
@@ -20,6 +21,7 @@ class Thread(CoreModelBase):
             user_id = db_thread.user_id,
             created_at = db_thread.created_at,
             title = db_thread.title,
+            description = db_thread.description,
             thread_actions = None if db_thread_actions is None else [
                 ThreadAction.create(db_thread_action) for db_thread_action in db_thread_actions
             ]
