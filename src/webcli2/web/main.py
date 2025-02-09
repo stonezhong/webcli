@@ -8,7 +8,6 @@ import os
 import importlib
 import uuid
 import json
-import datetime
 
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -18,7 +17,6 @@ from sqlalchemy import create_engine
 from contextlib import asynccontextmanager
 
 from webcli2 import WebCLIEngine, WebCLIEngineStatus, WebSocketConnectionManager, UserManager
-from webcli2.action_handlers.config import ConfigHandler
 from webcli2.models import Thread, User, Action, ThreadAction
 from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest
 from fastapi import WebSocket
@@ -263,11 +261,8 @@ async def list_threads(request:Request, thread_id:int, user:User=Depends(authent
         raise HTTPException(status_code=404, detail="Thread not found")
     return thread
 
-##########################################################
-# Endpoint for client to create actions
-##########################################################
 @app.post("/apis/threads/{thread_id}/actions", response_model=ThreadAction)
-async def create_action(request_data: CreateActionRequest, request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
+async def create_thread_action(request_data: CreateActionRequest, request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
     status, thread_aciton = await webcli_engine.async_start_action(request_data, user, thread_id)
     if status == WebCLIEngineStatus.OK:
         return thread_aciton
