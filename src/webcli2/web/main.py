@@ -3,7 +3,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict
 import os
 import importlib
 import uuid
@@ -23,7 +23,7 @@ from webcli2.models import Thread, User, Action, ThreadAction
 from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest
 from fastapi import WebSocket
 
-from webcli2.config import load_config
+from webcli2.config import load_config, ActionHandlerInfo
 
 ##########################################################
 # WEB_DIR is the directory of web insode webcli2 package
@@ -37,15 +37,25 @@ config = load_config()
 # We will install ConfigHandler anyway
 ##########################################################
 action_handlers = {
-    "config": ConfigHandler()
 }
 
-for action_handler_name, action_handler_info in config.core.action_handlers.items():
-    logger.info(f"Loading action handler: name={action_handler_name}, module={action_handler_info.module_name}, class={action_handler_info.class_name}")
-    module = importlib.import_module(action_handler_info.module_name)
-    klass = getattr(module, action_handler_info.class_name)
-    action_handler = klass(**action_handler_info.config)
-    action_handlers[action_handler_name] = action_handler
+def config_action_handlers():
+    action_handlers_config:Dict[str, ActionHandlerInfo] = {
+        "config": ActionHandlerInfo(
+            module_name="webcli2.action_handlers.config",
+            class_name="ConfigHandler",
+            config = {}
+        )
+    }
+    action_handlers_config.update(config.core.action_handlers)
+    for action_handler_name, action_handler_info in action_handlers_config.items():
+        logger.info(f"Loading action handler: name={action_handler_name}, module={action_handler_info.module_name}, class={action_handler_info.class_name}")
+        module = importlib.import_module(action_handler_info.module_name)
+        klass = getattr(module, action_handler_info.class_name)
+        action_handler = klass(**action_handler_info.config)
+        action_handlers[action_handler_name] = action_handler
+    logger.info(f"All action handlers are loaded")
+config_action_handlers()
 
 ##########################################################
 # create a WebCLIEngine

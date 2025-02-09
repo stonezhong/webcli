@@ -176,14 +176,11 @@ class PySparkActionHandler(ActionHandler):
         logger.debug(f"{log_prefix}: exit")
 
     def __init__(self, *, stream_id:str, kafka_consumer_group_name:str):
-        log_prefix = "PySparkActionHandler.__init__"
-        logger.debug(f"{log_prefix}: enter")
         self.oakcf = OciApiKeyClientFactory()
         self.stream_id = stream_id
         self.kafka_consumer_group_name = kafka_consumer_group_name
         self.listener_thread = None
         self.stream_client = self.oakcf.get_stream_client()
-        logger.debug(f"{log_prefix}: exit")
 
     def parse_request(self, request:Any, action_id:int) -> Optional[PySparkRequest]:
         log_prefix = "PySparkActionHandler.parse_request"

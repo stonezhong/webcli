@@ -23,10 +23,7 @@ class OpenAIActionHandler(ActionHandler):
     client: OpenAI
 
     def __init__(self):
-        log_prefix = "OpenAIActionHandler.__init__"
-        logger.debug(f"{log_prefix}: enter")
         self.client = OpenAI(api_key="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")
-        logger.debug(f"{log_prefix}: exit")
 
     def startup(self, webcli_engine:WebCLIEngine):
         log_prefix = "OpenAIActionHandler.startup"

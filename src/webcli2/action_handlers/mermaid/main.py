@@ -20,11 +20,6 @@ class MermaidResponse(BaseModel):
     content: str
 
 class MermaidHandler(ActionHandler):
-    def __init__(self):
-        log_prefix = "MermaidHandler.__init__"
-        logger.debug(f"{log_prefix}: enter")
-        logger.debug(f"{log_prefix}: exit")
-
     def startup(self, webcli_engine:WebCLIEngine):
         log_prefix = "MermaidHandler.startup"
         logger.debug(f"{log_prefix}: enter")

@@ -38,7 +38,7 @@ class WebCLIApplication:
                 )
         logging.config.dictConfig(log_config)
         
-        logger = logging.getLogger(__file__)
+        logger = logging.getLogger(__name__)
         logger.info("Logging is initialized")
 
 

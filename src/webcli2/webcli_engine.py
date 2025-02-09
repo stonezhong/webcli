@@ -72,8 +72,8 @@ class AsyncCall:
         return self.return_value
 
 class ActionHandler(ABC):
-    webcli_engine: "WebCLIEngine" = None
-    wsc_manager: WebSocketConnectionManager = None
+    webcli_engine: Optional["WebCLIEngine"] = None
+    wsc_manager: Optional[WebSocketConnectionManager] = None
     require_shutdown: Optional[bool] = None
 
     # can you handle this request?

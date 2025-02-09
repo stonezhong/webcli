@@ -2,8 +2,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 from typing import Any, Optional, Literal
-from pydantic import BaseModel, ValidationError
 import json
+
+from pydantic import BaseModel, ValidationError
 
 from webcli2 import ActionHandler
 from pydantic import ValidationError
@@ -23,9 +24,6 @@ class ConfigResponse(BaseModel):
     error_message: Optional[str]
 
 class ConfigHandler(ActionHandler):
-    def __init__(self):
-        pass
-
     def parse_request(self, request:Any) -> Optional[ConfigRequest]:
         log_prefix = "ConfigHandler.parse_request"
         logger.debug(f"{log_prefix}: enter")
