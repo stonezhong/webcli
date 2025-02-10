@@ -4,6 +4,8 @@ import { ThreadPage } from './Pages/ThreadPage';
 import MermaidActionHandler from "./ActionHandlers/MermaidActionHandler";
 import PySparkActionHandler from "./ActionHandlers/PySparkActionHandler";
 import ConfigActionHandler from './ActionHandlers/ConfigActionHandler';
+import OpenAIActionHandler from './ActionHandlers/OpenAIActionHandler';
+
 
 const thread_id = parseInt(document.querySelector('meta[name="thread-id"]').content);
 const client_id = document.querySelector('meta[name="client-id"]').content;
@@ -33,6 +35,10 @@ setActionHandlerConfig(actionHandler);
 actionHandlerMap.set(actionHandler.getName(), actionHandler);
 
 actionHandler = new PySparkActionHandler(client_id);
+setActionHandlerConfig(actionHandler);
+actionHandlerMap.set(actionHandler.getName(), actionHandler);
+
+actionHandler = new OpenAIActionHandler(client_id);
 setActionHandlerConfig(actionHandler);
 actionHandlerMap.set(actionHandler.getName(), actionHandler);
 
