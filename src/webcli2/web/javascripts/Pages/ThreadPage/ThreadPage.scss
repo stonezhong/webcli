@@ -1,0 +1,76 @@
+.cli-page {
+	height: 100vh;
+	width: 100%;
+}
+
+.answer-panel {
+	height: 100%;
+	overflow: auto;
+}
+
+.question-panel {
+	height: 100%;
+}
+
+.question-panel--question {
+    font-family: monospace;
+    font-size: 14px;
+    height: 100%;
+}
+.spacebar {
+    height: 12px;
+}
+
+// component level style
+.editable-text {
+    td {
+        border-width: 0;
+    }
+    td.tools-column {
+        width: 30px;
+        vertical-align: top;
+    }
+    .editable-text-icon {
+        cursor: pointer;
+        vertical-align: top;
+        width: 24px;
+        height: 24px;
+    }
+}
+
+// override
+tr.thread-title-editor {
+    td.tools-column {
+        vertical-align: middle;
+    }
+    .editable-text-text {
+        font-weight: bold; 
+        font-size: 40px; 
+    }
+}
+
+tr.action-title-editor {
+    td.tools-column {
+        vertical-align: middle;
+        width: 200px;
+    }
+}
+
+.standard-icon {
+    width: 24px;
+    height: 24px;
+}
+
+.clickable-icon {
+    cursor: pointer;
+}
+
+.question-wrapper {
+    background-color: white;
+    margin-bottom: 4px;
+}
+
+.answer-wrapper {
+    background-color: white;
+    margin-bottom: 4px;
+}

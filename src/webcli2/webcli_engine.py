@@ -21,7 +21,8 @@ from sqlalchemy import func
 
 from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser, DBThread, DBThreadAction
 from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload, Thread, ThreadAction
-from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest
+from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, \
+    PatchThreadActionRequest, PatchThreadRequest
 from webcli2.websocket import WebSocketConnectionManager
 
 from abc import ABC, abstractmethod
@@ -305,6 +306,23 @@ class WebCLIEngine:
                 thread = None
             else:
                 thread = Thread.create(db_thread, db_thread_actions=db_thread_actions)
+        return thread
+
+    async def patch_thread(self, thread_id:int, request_data:PatchThreadRequest) -> Optional[Thread]:
+        with Session(self.db_engine) as session:
+            with session.begin():
+                db_thread:DBThread = session.get(DBThread, thread_id)
+                if db_thread is None:
+                    return None
+
+                if request_data.title is not None:
+                    db_thread.title = request_data.title
+                if request_data.description is not None:
+                    db_thread.description = request_data.description
+                
+                if request_data.title is not None or request_data.description is not None:
+                    session.add(db_thread)
+            thread = Thread.create(db_thread)
         return thread
 
     async def delete_thread(self, thread_id:int):

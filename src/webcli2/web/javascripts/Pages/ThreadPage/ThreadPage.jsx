@@ -9,18 +9,21 @@ import { SplitViewHorizontal } from "@/Components/SplitView";
 import Spinner from 'react-bootstrap/Spinner';
 import Alert from 'react-bootstrap/Alert';
 import pino from 'pino';
-import Stack from 'react-bootstrap/Stack';
+import { MdModeEdit, MdDelete } from "react-icons/md";
+import { FaQuestion } from "react-icons/fa";
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
-    update_thread_action_show_question, update_thread_action_show_answer
+    update_thread_action_show_question, update_thread_action_show_answer,
+    update_thread_title, update_thread_description
 } from '@/apis';
 
 import {
     getNextValue, dropItemFromReactState, updateMatchingItemsFromReactState, updateMatchingItemsFromReactStateAsync
 } from '@/algo';
 
-import './ThreadPage.css';
+import '@/global.scss';
+import './ThreadPage.scss';
 
 const logger = pino({
     level: 'debug',
@@ -43,7 +46,148 @@ class ThreadActionWrapper {
     */
     constructor(threadAction) {
         this.threadAction = threadAction;
-        this.editing_title = false;     // editing title?
+        // this.editing_title = false;     // editing title?
+    }
+}
+
+class EditableText extends React.Component {
+    /*******************
+     * props
+     *     className:   (optional) extra classname for the tr element
+     *     onSave:      (Must provide) callback, called when text is saved
+    */
+    constructor(props) {
+        super(props);
+        this.editor_ref = React.createRef();
+        this.state = {
+            text:this.props.text,
+            saved_text:"",
+            editing: false
+        };
+    }
+
+    componentDidUpdate(prevProps, prevState) {
+        if (this.props.text !== prevProps.text) {
+            this.setState({
+                text: this.props.text,
+            });
+        }
+    }
+
+    render_editing_mode = () => {
+        if (this.props.multiLine) {
+            return <Form.Control
+                ref={this.editor_ref}
+                className="editable-text-text"
+                as="textarea" rows={3}
+                value={this.state.saved_text}
+                onKeyDown={async event => {
+                    if (event.key === "Escape") {
+                        // user can hit Escape key to cancel the edit
+                        this.setState({
+                            editing: false,
+                        });   
+                    } else if (event.ctrlKey && event.key === "Enter") {
+                        // user can hit enter to submit the change
+                        this.setState(
+                            prevState => ({
+                                editing: false,
+                                text: this.state.saved_text   
+                            }),
+                            async () => {
+                                this.props.onSave(this.state.saved_text);
+                            }
+                        )
+                    }
+                }}
+                onChange={event => {
+                    this.setState({saved_text:event.target.value})
+                }}
+            />;
+        } else {
+            return <Form.Control
+                ref={this.editor_ref}
+                className="editable-text-text"
+                value={this.state.saved_text}
+                onKeyDown={async event => {
+                    if (event.key === "Escape") {
+                        // user can hit Escape key to cancel the edit
+                        this.setState({
+                            editing: false,
+                        });   
+                    } else if (event.key === "Enter") {
+                        // user can hit enter to submit the change
+                        this.setState({
+                            editing: false,
+                            text: this.state.saved_text
+                        });
+                        await this.props.onSave(this.state.saved_text);
+                    }
+                }}
+                onChange={event => {
+                    this.setState({saved_text:event.target.value})
+                }}
+            />;
+        }
+    }
+    
+    render_non_editing_mode = () => {
+        if (this.props.multiLine) {
+            return <Form.Control
+                ref={this.editor_ref}
+                className="editable-text-text"
+                as="textarea" rows={3}
+                style={{
+                    backgroundColor: 'transparent',
+                    border: '1px transparent'
+                }}
+                disabled
+                value={this.state.text}
+            />
+        } else {
+            return <Form.Control
+                ref={this.editor_ref}
+                className="editable-text-text"
+                style={{
+                    backgroundColor: 'transparent',
+                    border: '1px transparent'
+                }}
+                disabled
+                value={this.state.text}
+            />
+        }
+    }
+
+    render() {
+        return <tr className={`${this.props.className} editable-text`}>
+            <td className="tools-column">
+                {this.props.children}
+                <MdModeEdit 
+                    className="editable-text-icon"
+                    onClick={event => {
+                        this.setState(
+                            prevState => ({
+                                editing: true,
+                                saved_text: this.state.text
+                            }),
+                            () => {
+                                if (this.editor_ref.current) {
+                                    this.editor_ref.current.focus(); // Set focus to the editor
+                                }        
+                            }
+                        )
+                    }}
+                    style={{
+                        display: this.state.editing?"none":"inline"
+                    }}
+                />
+            </td>
+            <td>
+            {
+                this.state.editing?this.render_editing_mode():this.render_non_editing_mode()
+            }
+            </td>
+        </tr>;
     }
 }
 
@@ -78,7 +222,9 @@ export class ThreadPage extends React.Component {
             threadActionWrappers: [],
             command: "",
             thread_title:"",
-            alerts: []
+            thread_description:"",
+            alerts: [],
+            editing_title: false,
         };
     }
 
@@ -153,22 +299,22 @@ export class ThreadPage extends React.Component {
         });
     }
 
-    setActionEditingTitle = async (threadActionWrapper, editing_title) => {
-        if (!editing_title) {
-            await update_action_title({
-                action_id:threadActionWrapper.threadAction.action.id, 
-                title:threadActionWrapper.threadAction.action.title
-            });
-        }
-        updateMatchingItemsFromReactState({
-            element: this,
-            stateFieldName:"threadActionWrappers",
-            shouldUpdate: xThreadActionWrapper => xThreadActionWrapper.threadAction.action.id === threadActionWrapper.threadAction.action.id,
-            doUpdate: xThreadActionWrapper => {
-                xThreadActionWrapper.editing_title = editing_title;
-            }
-        });
-    }
+    // setActionEditingTitle = async (threadActionWrapper, editing_title) => {
+    //     if (!editing_title) {
+    //         await update_action_title({
+    //             action_id:threadActionWrapper.threadAction.action.id, 
+    //             title:threadActionWrapper.threadAction.action.title
+    //         });
+    //     }
+    //     updateMatchingItemsFromReactState({
+    //         element: this,
+    //         stateFieldName:"threadActionWrappers",
+    //         shouldUpdate: xThreadActionWrapper => xThreadActionWrapper.threadAction.action.id === threadActionWrapper.threadAction.action.id,
+    //         doUpdate: xThreadActionWrapper => {
+    //             xThreadActionWrapper.editing_title = editing_title;
+    //         }
+    //     });
+    // }
 
     /**********************************************************************************
      * Render an action
@@ -180,63 +326,51 @@ export class ThreadPage extends React.Component {
         const action = threadAction.action;
         const actionHandler = this.props.actionHandlerMap.get(action.handler_name);
         return <div>
-            <div>
-                <div>
-                    <Stack direction="horizontal" gap={3}>
-                        <Button 
-                            variant="primary" 
-                            size="sm" 
-                            className="me-2"
+            <table style={{width: "100%"}} className="question-table">
+                <tbody>
+                    <EditableText
+                        className="action-title-editor"
+                        multiLine={false}
+                        text={action.title}
+                        onSave = {async newText => {
+                            await this.setActionTitle(action, newText);
+                        }}
+                    >
+                        <Form.Check
+                            inline
+                            type="switch"
+                            label="Q"
+                            checked={threadAction.show_question}
+                            onChange={async event => {
+                                await this.setActionShowQuestion(threadAction, event.target.checked);
+                            }}        
+                        />
+                        
+                        <Form.Check
+                            inline
+                            type="switch"
+                            label="A"
+                            checked={threadAction.show_answer}
+                            onChange={async event => {
+                                await this.setActionShowAnswer(threadAction, event.target.checked);
+                            }}
+                        />
+                        <MdDelete className="standard-icon clickable-icon"
                             onClick={async event=>{
                                 await this.deleteAction(action);
                             }}
-                        >
-                            Delete
-                        </Button>
-                        <Form.Control 
-                            type="input" 
-                            value={action.title} 
-                            disabled={!threadActionWrapper.editing_title}
-                            onChange={async event=>{
-                                await this.setActionTitle(action, event.target.value);
-                            }}
                         />
-                    </Stack>
-                </div>
-                <Form.Check
-                    inline
-                    type="checkbox"
-                    label="Show Question"
-                    checked={threadAction.show_question}
-                    onChange={async event => {
-                        await this.setActionShowQuestion(threadAction, event.target.checked);
-                    }}
-                />
-                <Form.Check
-                    inline
-                    type="checkbox"
-                    label="Show Answer"
-                    checked={threadAction.show_answer}
-                    onChange={async event => {
-                        await this.setActionShowAnswer(threadAction, event.target.checked);
-                    }}
-                />
-                <Form.Check
-                    inline
-                    type="checkbox"
-                    label="Edit Title"
-                    checked={threadActionWrapper.editing_title}
-                    onChange={async event => {
-                        await this.setActionEditingTitle(threadActionWrapper, event.target.checked);
-                    }}
-                />
-            </div>
+                    </EditableText>
+                </tbody>
+            </table>
+            
             {
-                (threadAction.show_question)?<pre>{action.raw_text}</pre>:null
+                (threadAction.show_question)?<div className="question-wrapper"><pre>{action.raw_text}</pre></div>:null
             }
             {
-                (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():actionHandler.renderAction(action)):null
+                (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():<div className="answer-wrapper">{actionHandler.renderAction(action)}</div>):null
             }
+            
         </div>;
     }
 
@@ -302,6 +436,7 @@ export class ThreadPage extends React.Component {
         const threadActionWrappers = thread.thread_actions.map(threadAction => new ThreadActionWrapper(threadAction));
         this.setState({
             thread_title: thread.title,
+            thread_description: thread.description,
             threadActionWrappers
         })
 
@@ -397,11 +532,50 @@ export class ThreadPage extends React.Component {
         logger.info("ThreadPage.connect: exit");
     }
 
+
     render() {
         return (
             <div className='cli-page'>
                 <SplitViewHorizontal>
                     <Container fluid className='h-100'>
+                        <Row>
+                            <Col>
+                                <table style={{width: "100%"}}>
+                                    <tbody>
+                                        <EditableText
+                                            className="thread-title-editor"
+                                            multiLine={false}
+                                            text={this.state.thread_title}
+                                            onSave = {async newText => {
+                                                console.log("save title");
+                                                await update_thread_title({
+                                                    thread_id:this.props.threadId,
+                                                    title: newText
+                                                });
+                                                this.setState({
+                                                    thread_title:newText
+                                                });
+                                            }}
+                                        />
+                                        <EditableText
+                                            className="description-editor"
+                                            multiLine={true}
+                                            text={this.state.thread_description}
+                                            onSave = {async newText => {
+                                                await update_thread_description({
+                                                    thread_id:this.props.threadId,
+                                                    description: newText
+                                                });
+                                                this.setState({
+                                                    thread_description:newText
+                                                });
+                                            }}
+                                        />
+                                    </tbody>
+                                </table>
+                            </Col>
+                        </Row>
+
                         <Row>
                             <Col>
                             {this.state.alerts.map(
@@ -417,11 +591,12 @@ export class ThreadPage extends React.Component {
                             )}
                             </Col>
                         </Row>
+
                         <Row className="answer-panel">
                             <Col>
                             {
                                 this.state.threadActionWrappers.map(threadActionWrapper => {
-                                    return <div key={threadActionWrapper.threadAction.id} className="mb-2">
+                                    return <div key={threadActionWrapper.threadAction.id}>
                                         {this.renderAction(threadActionWrapper)}
                                     </div>
                                 })

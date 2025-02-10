@@ -18,7 +18,8 @@ from contextlib import asynccontextmanager
 
 from webcli2 import WebCLIEngine, WebCLIEngineStatus, WebSocketConnectionManager, UserManager
 from webcli2.models import Thread, User, Action, ThreadAction
-from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, PatchThreadActionRequest
+from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, \
+    PatchThreadActionRequest, PatchThreadRequest
 from fastapi import WebSocket
 
 from webcli2.config import load_config, ActionHandlerInfo
@@ -262,6 +263,13 @@ async def delete_thread(request:Request, thread_id:int, user:User=Depends(authen
 @app.get("/apis/threads/{thread_id}", response_model=Thread)
 async def get_thread(request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
     thread = await webcli_engine.get_thread(thread_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread
+
+@app.patch("/apis/threads/{thread_id}", response_model=Thread)
+async def patch_thread(request_data: PatchThreadRequest, request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
+    thread = await webcli_engine.patch_thread(thread_id, request_data)
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     return thread

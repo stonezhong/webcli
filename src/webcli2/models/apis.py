@@ -17,3 +17,7 @@ class CreateActionRequest(CoreModelBase):
     title: str
     raw_text: str
     request: dict
+
+class PatchThreadRequest(CoreModelBase):
+    title: Optional[str] = None
+    description: Optional[str] = None

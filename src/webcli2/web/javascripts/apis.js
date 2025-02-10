@@ -54,6 +54,35 @@ export async function create_thread({title, description}) {
 
 }
 
+export async function update_thread_title({thread_id, title}) {
+    const response = await fetch(`/apis/threads/${thread_id}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({title}),
+    });
+    if (!response.ok) {
+        throw new Error(`update_thread_title: Failed to update thread title: ${response.status}`);
+    }
+    await response.json();
+}
+
+export async function update_thread_description({thread_id, description}) {
+    const response = await fetch(`/apis/threads/${thread_id}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({description}),
+    });
+    if (!response.ok) {
+        throw new Error(`update_thread_description: Failed to update thread description: ${response.status}`);
+    }
+    await response.json();
+}
+
+
 export async function delete_thread({id}) {
     /***************
      * Return:

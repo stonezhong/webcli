@@ -43,6 +43,7 @@ export class ThreadsPage extends React.Component {
                     {thread.title}
                 </Card.Title>
                 <Card.Text>
+                    {thread.description}
                 </Card.Text>
                 <Card.Link href={`/threads/${thread.id}`}>Open</Card.Link>
                 <Card.Link href="#" onClick={async event=> {
