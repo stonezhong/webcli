@@ -10,7 +10,7 @@ import Spinner from 'react-bootstrap/Spinner';
 import Alert from 'react-bootstrap/Alert';
 import pino from 'pino';
 import { MdModeEdit, MdDelete } from "react-icons/md";
-import { FaQuestion } from "react-icons/fa";
+import { setStateAsync } from "@/tools.js";
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
@@ -55,6 +55,7 @@ class EditableText extends React.Component {
      * props
      *     className:   (optional) extra classname for the tr element
      *     onSave:      (Must provide) callback, called when text is saved
+     *     onError:     caller to display error message
     */
     constructor(props) {
         super(props);
@@ -66,9 +67,9 @@ class EditableText extends React.Component {
         };
     }
 
-    componentDidUpdate(prevProps, prevState) {
+    async componentDidUpdate(prevProps, prevState) {
         if (this.props.text !== prevProps.text) {
-            this.setState({
+            await setStateAsync(this, {
                 text: this.props.text,
             });
         }
@@ -84,24 +85,23 @@ class EditableText extends React.Component {
                 onKeyDown={async event => {
                     if (event.key === "Escape") {
                         // user can hit Escape key to cancel the edit
-                        this.setState({
-                            editing: false,
-                        });   
+                        await setStateAsync(this, {editing: false});
                     } else if (event.ctrlKey && event.key === "Enter") {
                         // user can hit enter to submit the change
-                        this.setState(
-                            prevState => ({
+                        try {
+                            await this.props.onSave(this.state.saved_text);
+                            await setStateAsync(this, {
                                 editing: false,
                                 text: this.state.saved_text   
-                            }),
-                            async () => {
-                                this.props.onSave(this.state.saved_text);
-                            }
-                        )
+                            });
+                        }
+                        catch (err) {
+                            await this.props.onError(err);
+                        }
                     }
                 }}
-                onChange={event => {
-                    this.setState({saved_text:event.target.value})
+                onChange={async event => {
+                    await setStateAsync(this, {saved_text:event.target.value});
                 }}
             />;
         } else {
@@ -112,20 +112,23 @@ class EditableText extends React.Component {
                 onKeyDown={async event => {
                     if (event.key === "Escape") {
                         // user can hit Escape key to cancel the edit
-                        this.setState({
-                            editing: false,
-                        });   
+                        await setStateAsync(this, {editing: false});
                     } else if (event.key === "Enter") {
                         // user can hit enter to submit the change
-                        this.setState({
-                            editing: false,
-                            text: this.state.saved_text
-                        });
-                        await this.props.onSave(this.state.saved_text);
+                        try {
+                            await this.props.onSave(this.state.saved_text);
+                            await setStateAsync(this, {
+                                editing: false,
+                                text: this.state.saved_text   
+                            });
+                        }
+                        catch (err) {
+                            await this.props.onError(err);
+                        }
                     }
                 }}
-                onChange={event => {
-                    this.setState({saved_text:event.target.value})
+                onChange={async event => {
+                    await setStateAsync(this, {saved_text:event.target.value})
                 }}
             />;
         }
@@ -164,18 +167,11 @@ class EditableText extends React.Component {
                 {this.props.children}
                 <MdModeEdit 
                     className="editable-text-icon"
-                    onClick={event => {
-                        this.setState(
-                            prevState => ({
-                                editing: true,
-                                saved_text: this.state.text
-                            }),
-                            () => {
-                                if (this.editor_ref.current) {
-                                    this.editor_ref.current.focus(); // Set focus to the editor
-                                }        
-                            }
-                        )
+                    onClick={async event => {
+                        await setStateAsync(this, {editing: true, saved_text: this.state.text});
+                        if (this.editor_ref.current) {
+                            this.editor_ref.current.focus(); // Set focus to the editor
+                        }
                     }}
                     style={{
                         display: this.state.editing?"none":"inline"
@@ -228,20 +224,20 @@ export class ThreadPage extends React.Component {
         };
     }
 
-    removeAlert = (alert) => {
-        this.setState({
+    removeAlert = async alert => {
+        await setStateAsync(this, {
             alerts: this.state.alerts.filter(it => it.id !== alert.id)
         })
     }
 
-    addAlert = message => {
+    addAlert = async message => {
         const newAlert = {
             id: getNextValue({values:this.state.alerts.map(alert => alert.id)}),
             message: message
         };
-        this.setState({
+        await setStateAsync(this, {
             alerts: [...this.state.alerts, newAlert]
-        })
+        });
     }
 
     /**
@@ -299,23 +295,6 @@ export class ThreadPage extends React.Component {
         });
     }
 
-    // setActionEditingTitle = async (threadActionWrapper, editing_title) => {
-    //     if (!editing_title) {
-    //         await update_action_title({
-    //             action_id:threadActionWrapper.threadAction.action.id, 
-    //             title:threadActionWrapper.threadAction.action.title
-    //         });
-    //     }
-    //     updateMatchingItemsFromReactState({
-    //         element: this,
-    //         stateFieldName:"threadActionWrappers",
-    //         shouldUpdate: xThreadActionWrapper => xThreadActionWrapper.threadAction.action.id === threadActionWrapper.threadAction.action.id,
-    //         doUpdate: xThreadActionWrapper => {
-    //             xThreadActionWrapper.editing_title = editing_title;
-    //         }
-    //     });
-    // }
-
     /**********************************************************************************
      * Render an action
      * action: Action
@@ -332,7 +311,14 @@ export class ThreadPage extends React.Component {
                         className="action-title-editor"
                         multiLine={false}
                         text={action.title}
+                        onError = {
+                            async err => await this.addAlert(`Cannot change action title, error: ${err.message}`)
+                        }
                         onSave = {async newText => {
+                            await update_action_title({
+                                action_id:threadActionWrapper.threadAction.action.id,
+                                title:newText
+                            });
                             await this.setActionTitle(action, newText);
                         }}
                     >
@@ -405,7 +391,7 @@ export class ThreadPage extends React.Component {
         // if no action handler recognize the text, we will ignore it
         if (request === null) {
             // TODO: pop up some error message
-            this.addAlert("Unrecognized command");
+            await this.addAlert("Unrecognized command");
             logger.info("ThreadPage.sendAction: unrecognized command");
             logger.info("ThreadPage.sendAction: exit");
             return;
@@ -414,14 +400,14 @@ export class ThreadPage extends React.Component {
         try {
             const threadAction = await create_action({thread_id:this.props.threadId, request, title:"question", raw_text:command});
             logger.info("ThreadPage.sendAction: server response: ", threadAction);
-            this.setState({
+            await setStateAsync(this, {
                 threadActionWrappers: [...this.state.threadActionWrappers, new ThreadActionWrapper(threadAction)]
             });
             logger.info("ThreadPage.sendAction: exit");
         } 
         catch(err) {
             // TODO: pop up some error message
-            this.addAlert(err.message);
+            await this.addAlert(err.message);
             logger.info("ThreadPage.sendAction: error, ", err.message);
             return;
         }
@@ -434,7 +420,7 @@ export class ThreadPage extends React.Component {
         
         const thread = await get_thread(this.props.threadId);
         const threadActionWrappers = thread.thread_actions.map(threadAction => new ThreadActionWrapper(threadAction));
-        this.setState({
+        await setStateAsync(this, {
             thread_title: thread.title,
             thread_description: thread.description,
             threadActionWrappers
@@ -540,19 +526,37 @@ export class ThreadPage extends React.Component {
                     <Container fluid className='h-100'>
                         <Row>
                             <Col>
+                            {this.state.alerts.map(
+                                alert => 
+                                <Alert 
+                                    key={alert.id} 
+                                    variant="danger"
+                                    dismissible
+                                    onClose={async () => await this.removeAlert(alert)} 
+                                >
+                                    {alert.message}
+                                </Alert>
+                            )}
+                            </Col>
+                        </Row>
+
+                        <Row>
+                            <Col>
                                 <table style={{width: "100%"}}>
                                     <tbody>
                                         <EditableText
                                             className="thread-title-editor"
                                             multiLine={false}
                                             text={this.state.thread_title}
+                                            onError = {
+                                                async err => await this.addAlert(`Cannot change thread title, error: ${err.message}`)
+                                            }
                                             onSave = {async newText => {
-                                                console.log("save title");
                                                 await update_thread_title({
                                                     thread_id:this.props.threadId,
                                                     title: newText
                                                 });
-                                                this.setState({
+                                                await setStateAsync(this, {
                                                     thread_title:newText
                                                 });
                                             }}
@@ -561,34 +565,21 @@ export class ThreadPage extends React.Component {
                                             className="description-editor"
                                             multiLine={true}
                                             text={this.state.thread_description}
+                                            onError = {
+                                                async err => await this.addAlert(`Cannot change thread description, error: ${err.message}`)
+                                            }
                                             onSave = {async newText => {
                                                 await update_thread_description({
                                                     thread_id:this.props.threadId,
                                                     description: newText
                                                 });
-                                                this.setState({
+                                                await setStateAsync(this, {
                                                     thread_description:newText
                                                 });
                                             }}
                                         />
                                     </tbody>
                                 </table>
-                            </Col>
-                        </Row>
-
-                        <Row>
-                            <Col>
-                            {this.state.alerts.map(
-                                alert => 
-                                <Alert 
-                                    key={alert.id} 
-                                    variant="danger"
-                                    dismissible
-                                    onClose={() => this.removeAlert(alert)} 
-                                >
-                                    {alert.message}
-                                </Alert>
-                            )}
                             </Col>
                         </Row>
 
@@ -611,7 +602,7 @@ export class ThreadPage extends React.Component {
                                     className='question-panel--question'
                                     value={this.state.command}
                                     onChange={async (event) => {
-                                        this.setState({
+                                        await setStateAsync(this, {
                                             command: event.target.value
                                         });
                                     }}
