@@ -99,7 +99,7 @@ class ActionHandler(ABC):
         pass
 
     @abstractmethod
-    def handle(self, action_id:int, request:Any):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         # to complete the action, you can call
         # cli_handler.complete_action(None, action_id, ...)
         #
@@ -373,7 +373,7 @@ class WebCLIEngine:
                     select(DBThreadAction)\
                         .where(DBThreadAction.thread_id == thread_id)\
                         .where(DBThreadAction.action_id == action_id)
-                ).one()
+                ).one_or_none()
                 if db_thread_action is None:
                     return None
                 
@@ -462,6 +462,16 @@ class WebCLIEngine:
         try:
             with Session(self.db_engine) as session:
                 with session.begin():
+                    # try to get user configuration for the action handler
+                    db_ahc = session.scalars(
+                        select(DBActionHandlerConfiguration)\
+                            .where(DBActionHandlerConfiguration.action_handler_name == found_action_handler_name)\
+                            .where(DBActionHandlerConfiguration.user_id == user.id)
+                    ).one_or_none()
+                    if db_ahc is None:
+                        action_handler_user_config = {}
+                    else:
+                        action_handler_user_config = db_ahc.configuration
 
                     # try to make sure the new action has the greatest display order within the thread
                     q = select(
@@ -508,7 +518,13 @@ class WebCLIEngine:
         with self.lock:
             # let handler to work in the thread pool
             logger.debug(f"{log_prefix}: invoking handler in thread pool, handler {found_action_handler.handle}")
-            self.executor.submit(found_action_handler.handle, thread_action.action.id, request.request, user)
+            self.executor.submit(
+                found_action_handler.handle, 
+                thread_action.action.id, 
+                request.request, 
+                user, 
+                action_handler_user_config
+            )
 
             rs = WebCLIEngineStatus.OK
             if async_call is not None:

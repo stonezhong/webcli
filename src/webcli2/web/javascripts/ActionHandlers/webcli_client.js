@@ -11,21 +11,6 @@ const logger = pino({
 export class BaseActionHandler {
     constructor(clientId) {
         this.clientId = clientId;
-        this.config = {};
-    }
-
-    /*********************************************
-     * Update the config of an action handler
-     */
-    setConfig(config) {
-        this.config = structuredClone(config);
-    }
-
-    /*********************************************
-     * Return the config of an action handler, the config is a JSON object
-     */
-    getConfig() {
-        return structuredClone(this.config);
     }
 
     /*********************************************

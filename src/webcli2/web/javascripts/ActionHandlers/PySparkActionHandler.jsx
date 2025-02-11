@@ -22,7 +22,6 @@ export default class PySparkActionHandler extends BaseActionHandler {
             return {
                 type: "spark-cli",
                 client_id: this.clientId,
-                server_id: this.config.server_id,
                 command_text: text
             };
         }

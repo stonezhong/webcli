@@ -78,7 +78,7 @@ class OpenAIActionHandler(ActionHandler):
         log_api_exit(logger, log_prefix)
         return r
 
-    def handle(self, action_id:int, request:Any, user:User):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "OpenAIActionHandler.handle"
         log_api_enter(logger, log_prefix)
 

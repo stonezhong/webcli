@@ -149,10 +149,6 @@ async def thread_page(request: Request, thread_id:int, user:Union[User, HTMLResp
     client_id = str(uuid.uuid4())
     user_id = user.id
 
-    ahcs = await webcli_engine.get_action_handler_configurations(user_id)
-    config_map = {
-        ahc.action_handler_name: ahc.model_dump(mode='json') for ahc in ahcs
-    }
     response = templates.TemplateResponse(
         "thread_page.html", 
         {
@@ -160,7 +156,6 @@ async def thread_page(request: Request, thread_id:int, user:Union[User, HTMLResp
             "title": "Web CLI Demo",
             "thread_id": thread_id,
             "client_id": client_id,
-            "config_map": json.dumps(config_map),
             "websocket_uri": config.core.websocket_uri,
         }
     )       

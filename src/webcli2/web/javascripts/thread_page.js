@@ -10,14 +10,6 @@ import OpenAIActionHandler from './ActionHandlers/OpenAIActionHandler';
 const thread_id = parseInt(document.querySelector('meta[name="thread-id"]').content);
 const client_id = document.querySelector('meta[name="client-id"]').content;
 const websocket_uri = document.querySelector('meta[name="websocket-uri"]').content;
-const configMap = JSON.parse(document.querySelector('meta[name="config-map"]').content);
-
-function setActionHandlerConfig(actionHandler) {
-    const actionHandlerName = actionHandler.getName();
-    const config = (actionHandlerName in configMap)?configMap[actionHandlerName].configuration:{};
-    actionHandler.setConfig(config);
-}
-
 
 // register action handlers
 
@@ -26,20 +18,15 @@ var actionHandler = null;
 
 // initialize all action handlers
 actionHandler = new ConfigActionHandler(client_id);
-setActionHandlerConfig(actionHandler);
 actionHandlerMap.set(actionHandler.getName(), actionHandler);
-actionHandler.actionHandlerMap = actionHandlerMap;
 
 actionHandler = new MermaidActionHandler(client_id);
-setActionHandlerConfig(actionHandler);
 actionHandlerMap.set(actionHandler.getName(), actionHandler);
 
 actionHandler = new PySparkActionHandler(client_id);
-setActionHandlerConfig(actionHandler);
 actionHandlerMap.set(actionHandler.getName(), actionHandler);
 
 actionHandler = new OpenAIActionHandler(client_id);
-setActionHandlerConfig(actionHandler);
 actionHandlerMap.set(actionHandler.getName(), actionHandler);
 
 const domNode = document.getElementById('webcli');

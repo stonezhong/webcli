@@ -43,14 +43,13 @@ PENDING_CLI_REQUEST = {
 
 class PySparkRequest(BaseModel):
     type: Literal["spark-cli"]
-    server_id: str
     client_id: str
     command_text: str
 
     #########################################################################
     # Given a PySparkRequest model, try to get CLI package from it
     #########################################################################
-    def get_cli_package(self, action_id:int):
+    def get_cli_package(self, action_id:int, server_id:str):
         log_prefix = "PySparkActionHandler.get_cli_package"
         log_api_enter(logger, log_prefix)
 
@@ -76,7 +75,7 @@ class PySparkRequest(BaseModel):
             package_type = PackageType.REQUEST,
             command_type = command_type,
             command_text = "\n".join(lines[1:]),
-            server_id = self.server_id,
+            server_id = server_id,
             client_id = self.client_id,
             sequence = str(action_id)
         )
@@ -220,7 +219,7 @@ class PySparkActionHandler(ActionHandler):
             log_api_exit(logger, log_prefix)
             return None
         
-        cli_package = spark_request.get_cli_package(action_id)
+        cli_package = spark_request.get_cli_package(action_id, "")
         if cli_package is None:
             logger.debug(f"{log_prefix}: cannot get CLIPackage from it")
             log_api_exit(logger, log_prefix)
@@ -261,14 +260,15 @@ class PySparkActionHandler(ActionHandler):
     # the "command" field is text
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
-    def handle(self, action_id:int, request:Any, user:User):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "PySparkActionHandler.handle"
         log_api_enter(logger, log_prefix)
         # TODO: if we are not able to send message, we should complete the action, set error code
         try:
             spark_request = self.parse_request(request, action_id)
             assert spark_request is not None # since handle only called if can_handle returns True, so we MUST have a cli_package
-            cli_package = spark_request.get_cli_package(action_id)
+            server_id = action_handler_user_config.get("server_id", "")
+            cli_package = spark_request.get_cli_package(action_id, server_id)
             assert cli_package is not None
             self.send_cli_package(cli_package)
             log_api_exit(logger, log_prefix)

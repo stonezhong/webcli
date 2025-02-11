@@ -48,7 +48,7 @@ class MermaidHandler(ActionHandler):
     # the "command" field is text
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
-    def handle(self, action_id:int, request:Any, user:User):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "MermaidHandler.handle"
         log_api_enter(logger, log_prefix)
 
