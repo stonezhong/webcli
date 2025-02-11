@@ -20,21 +20,6 @@ class MermaidResponse(BaseModel):
     content: str
 
 class MermaidHandler(ActionHandler):
-    def startup(self, webcli_engine:WebCLIEngine):
-        log_prefix = "MermaidHandler.startup"
-        logger.debug(f"{log_prefix}: enter")
-        super().startup(webcli_engine)
-        logger.debug(f"{log_prefix}: exit")
-
-    def shutdown(self):
-        log_prefix = "MermaidHandler.shutdown"
-        logger.debug(f"{log_prefix}: enter")
-        assert self.require_shutdown == False
-        assert self.webcli_engine is not None
-        self.require_shutdown = True
-        self.webcli_engine = None
-        logger.debug(f"{log_prefix}: exit")
-
     def parse_request(self, request:Any) -> Optional[MermaidRequest]:
         log_prefix = "MermaidHandler.parse_request"
         logger.debug(f"{log_prefix}: enter")

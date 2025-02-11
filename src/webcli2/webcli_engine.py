@@ -245,12 +245,13 @@ class WebCLIEngine:
             # TODO: if an action failed to startup, remove it since it may not handle
             #       request properly
             try:
-                logger.debug(f"{log_prefix}: startup action handler, name={action_handler_name},  {action_handler}")
+                logger.info(f"{log_prefix}: startup action handler, name={action_handler_name},  {action_handler}")
                 action_handler.startup(self)
             except Exception:
                 # we will tolerate if action handler failed to startup
                 logger.error(f"{log_prefix}: action handler startup exception", exc_info=True)
 
+        logger.info(f"{log_prefix}: all action handlers are started")
         logger.debug(f"{log_prefix}: exit")
 
     def shutdown(self):
@@ -395,6 +396,9 @@ class WebCLIEngine:
         # the method is responsible to finish the async call, optionally with return_value
         return await v.async_await_return()
     
+    #######################################################################
+    # Usually called by FastAPI async web handler directly
+    #######################################################################
     async def async_start_action(self, request:CreateActionRequest, user:User, thread_id:int) -> Tuple[WebCLIEngineStatus, Optional[ThreadAction]]:
         log_prefix = "WebCLIEngine:async_start_action"
         logger.debug(f"{log_prefix}: enter")

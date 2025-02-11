@@ -115,7 +115,7 @@ class WebSocketConnectionManager:
             if client_id not in self.client_manager_dict:
                 self.client_manager_dict[client_id] = ClientManager(client_id)
             client_manager = self.client_manager_dict[client_id]
-            logger.debug(f"{log_prefix}: client({client_id}) is connected to websocket")
+            logger.info(f"{log_prefix}: client({client_id}) is connected to websocket")
             await client_manager.add_web_socket(websocket)
             
         try:

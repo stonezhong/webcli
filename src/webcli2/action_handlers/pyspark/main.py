@@ -105,6 +105,7 @@ class PySparkActionHandler(ActionHandler):
         self.listener_thread = threading.Thread(target=self.listener, daemon=True)
         self.listener_thread.start()
         self.stream_client = self.oakcf.get_stream_client()
+        logger.info(f"{log_prefix}: PySparkActionHandler is started")
         logger.debug(f"{log_prefix}: exit")
 
     def shutdown(self):
@@ -120,6 +121,7 @@ class PySparkActionHandler(ActionHandler):
         self.listener_thread.join()
         self.webcli_engine = None
 
+        logger.info(f"{log_prefix}: PySparkActionHandler has been shutdown")
         logger.debug(f"{log_prefix}: exit")
 
 

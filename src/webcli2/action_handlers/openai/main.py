@@ -37,22 +37,6 @@ class OpenAIActionHandler(ActionHandler):
         self.config = load_config()
         os.makedirs(self.config.core.resource_dir, exist_ok=True)
 
-    def startup(self, webcli_engine:WebCLIEngine):
-        log_prefix = "OpenAIActionHandler.startup"
-        logger.debug(f"{log_prefix}: enter")
-        super().startup(webcli_engine)
-        logger.debug(f"{log_prefix}: exit")
-
-    def shutdown(self):
-        log_prefix = "OpenAIActionHandler.shutdown"
-        logger.debug(f"{log_prefix}: enter")
-        assert self.require_shutdown == False
-        assert self.webcli_engine is not None
-        self.require_shutdown = True
-        self.webcli_engine = None
-        logger.debug(f"{log_prefix}: exit")
-
-
     def parse_request(self, request:Any) -> Optional[OpenAIRequest]:
         log_prefix = "OpenAIActionHandler.parse_request"
         logger.debug(f"{log_prefix}: exit")

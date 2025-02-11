@@ -52,7 +52,7 @@ def load_config() ->Optional[WebCLIApplicationConfig]:
     # patch the config if needed
     config.core.home_dir = webcli_home
 
-    config.core.resource_dir = normalize_filename(webcli_home, config.core.log_dir)
+    config.core.resource_dir = normalize_filename(webcli_home, config.core.resource_dir)
     config.core.log_dir = normalize_filename(webcli_home, config.core.log_dir)
     config.core.log_config_filename = normalize_filename(webcli_home, config.core.log_config_filename)
     
