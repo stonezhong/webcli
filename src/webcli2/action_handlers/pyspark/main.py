@@ -8,6 +8,7 @@ import threading
 from pydantic import BaseModel, ValidationError
 import oci
 import json
+import uuid
 
 from webcli2 import WebCLIEngine, ActionHandler
 from oracle_spark_tools import OciApiKeyClientFactory
@@ -31,6 +32,13 @@ def get_value(value:Optional[str]) -> Optional[str]:
 #
 # For each CLIPackage (RESPONSE) we got, we will notify the browser via respective web socket
 ####################################################################################################
+
+# These request are not handled by %pyspark%
+# key is cli package sequence id, which is a uuid string
+# value is 
+PENDING_CLI_REQUEST = {
+
+}
 
 class PySparkRequest(BaseModel):
     type: Literal["spark-cli"]
@@ -69,7 +77,7 @@ class PySparkRequest(BaseModel):
             command_text = "\n".join(lines[1:]),
             server_id = self.server_id,
             client_id = self.client_id,
-            sequence = action_id
+            sequence = str(action_id)
         )
         # caller need to further set client_id
         logger.debug(f"{log_prefix}: exit")
@@ -156,18 +164,33 @@ class PySparkActionHandler(ActionHandler):
                             continue
 
                         logger.debug(f"{log_prefix}: got cli package: {cli_package}")
-                        # let's complete the action
-                        spark_response = SparkResponse(type="spark-cli", cli_package=cli_package)
-                        self.webcli_engine.complete_action(
-                            cli_package.sequence, 
-                            spark_response.model_dump(mode="json")
-                        )
-                        # notify browser via web socket
-                        self.webcli_engine.notify_websockt_client(
-                            cli_package.client_id, 
-                            cli_package.sequence, 
-                            spark_response
-                        )
+                        
+                        sequence = cli_package.sequence
+                        try:
+                            sequence = int(cli_package.sequence)
+                        except ValueError:
+                            pass
+
+                        if isinstance(sequence, int):
+                            # this CLI package is associated with an action
+                            # let's complete the action
+                            spark_response = SparkResponse(type="spark-cli", cli_package=cli_package)
+                            self.webcli_engine.complete_action(
+                                sequence, 
+                                spark_response.model_dump(mode="json")
+                            )
+                            # notify browser via web socket
+                            self.webcli_engine.notify_websockt_client(
+                                cli_package.client_id, 
+                                sequence, 
+                                spark_response
+                            )
+                        else:
+                            # this CLI package is not associated with an action
+                            slot = PENDING_CLI_REQUEST.get(sequence)
+                            if slot is not None:
+                                slot["response"] = cli_package
+                            slot["event"].set()
                 else:
                     time.sleep(2)
                 cursor = r.headers["opc-next-cursor"]
@@ -247,3 +270,26 @@ class PySparkActionHandler(ActionHandler):
             logger.debug(f"{log_prefix}: exit")
         except:
             logger.debug(f"{log_prefix}: exception captured", exc_info=True)
+
+
+    def run_pyspark_code(self, *, server_id:str, client_id:str, command_type:CommandType, source_code:str)->str:
+        sequence = str(uuid.uuid4())
+        event = threading.Event()
+
+        cli_package = CLIPackage(
+            package_type = PackageType.REQUEST,
+            command_type = command_type,
+            command_text = source_code,
+            server_id = server_id,
+            client_id = client_id,
+            sequence = sequence
+        )
+        PENDING_CLI_REQUEST[sequence] = {
+            "event": event,
+            "request": cli_package
+        }
+
+        self.send_cli_package(cli_package)
+        event.wait()
+        slot = PENDING_CLI_REQUEST.pop(sequence)
+        return slot["response"].reply_message

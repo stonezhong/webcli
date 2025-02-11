@@ -19,6 +19,14 @@ class CoreConfig(BaseModel):
     action_handlers: Dict[str, "ActionHandlerInfo"] = {}
     private_key: str            # for generating JWT token
     public_key: str             # for verifying JWT token
+    resource_dir:str            
+
+#################################################
+# resource_dir
+#
+# When server send response to client, it support binary format, for example images, etc
+# We will generate binary file here and change the output to points to here
+#################################################
 
 class ActionHandlerInfo(BaseModel):
     module_name: str
@@ -44,6 +52,7 @@ def load_config() ->Optional[WebCLIApplicationConfig]:
     # patch the config if needed
     config.core.home_dir = webcli_home
 
+    config.core.resource_dir = normalize_filename(webcli_home, config.core.log_dir)
     config.core.log_dir = normalize_filename(webcli_home, config.core.log_dir)
     config.core.log_config_filename = normalize_filename(webcli_home, config.core.log_config_filename)
     

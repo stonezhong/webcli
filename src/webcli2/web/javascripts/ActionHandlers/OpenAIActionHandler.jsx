@@ -27,7 +27,7 @@ export default class MermaidActionHandler extends BaseActionHandler {
         }
 
         const title = lines[0].trim()
-        if (!["%openai%"].includes(title)) {
+        if (!["%openai%", "%python%"].includes(title)) {
             return null;
         }
 
@@ -40,8 +40,26 @@ export default class MermaidActionHandler extends BaseActionHandler {
     }
 
     renderAction(action) {
-        return <ReactMarkdown>{action.response.message}</ReactMarkdown>;
+        return <div>
+            {action.response.chunks.map(chunk => {
+                if ((chunk.mime === "text/html")||(chunk.mime === "image/png")) {
+                    return <div dangerouslySetInnerHTML={{ __html: chunk.content }} />;
+                } else if (chunk.mime === "text/json") {
+                    try {
+                        const json_content = JSON.parse(chunk.content);
+                        return <pre>{JSON.stringify(json_content, null, 4)}</pre>
+                    }
+                    catch (err) {
+                        return <pre>{err.message}</pre>
+                    }
+                } else if (chunk.mime === "text/markdown") {
+                    return <ReactMarkdown>{chunk.content}</ReactMarkdown>;
+                } else if (chunk.mime === "text/plain") {
+                    return <pre>{chunk.content}</pre>
+                } else {
+                    throw new Error(`Unrecognized chunk: ${chunk.mime}`);
+                }       
+            })}
+        </div>;
     }
 }
-
-
