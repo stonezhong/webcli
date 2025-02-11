@@ -24,6 +24,7 @@ from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPay
 from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, \
     PatchThreadActionRequest, PatchThreadRequest
 from webcli2.websocket import WebSocketConnectionManager
+from webcli2.apilog import log_api_enter, log_api_exit
 
 from abc import ABC, abstractmethod
 
@@ -219,7 +220,7 @@ class WebCLIEngine:
 
     def __init__(self, *, db_engine:Engine, wsc_manager:WebSocketConnectionManager, action_handlers:Dict[str, ActionHandler]):
         log_prefix = "WebCLIEngine.__init__"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         self.db_engine = db_engine
         self.wsc_manager = wsc_manager
         self.executor = None
@@ -227,18 +228,18 @@ class WebCLIEngine:
         self.lock = threading.Lock()
         self.require_shutdown = None
         self.action_handlers = copy(action_handlers)
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
 
 
     def startup(self):
         log_prefix = "WebCLIEngine.startup"
         # TODO: maybe I should limit the thread number
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         self.require_shutdown = False
         self.executor = ThreadPoolExecutor()
 
         self.event_loop = get_event_loop()
-        logger.debug(f"{log_prefix}: event loop is {self.event_loop}")
+        logger.info(f"{log_prefix}: event loop is {self.event_loop}")
 
         # register all action handler
         for action_handler_name, action_handler in self.action_handlers.items():
@@ -252,11 +253,11 @@ class WebCLIEngine:
                 logger.error(f"{log_prefix}: action handler startup exception", exc_info=True)
 
         logger.info(f"{log_prefix}: all action handlers are started")
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
 
     def shutdown(self):
         log_prefix = "WebCLIEngine.shutdown"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         assert self.require_shutdown == False
         self.require_shutdown = True
 
@@ -268,9 +269,10 @@ class WebCLIEngine:
             except Exception:
                 # we will tolerate if action handler failed to shutdown
                 logger.error(f"{log_prefix}: action handler shutdown exception", exc_info=True)
+        logger.info(f"{log_prefix}: all action handlers are shutdown")
         # TODO: what if some request are stuck, shall we hang on shutdown?
         self.executor.shutdown(wait=True)
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
 
     #######################################################################
     # Thread management
@@ -401,23 +403,25 @@ class WebCLIEngine:
     #######################################################################
     async def async_start_action(self, request:CreateActionRequest, user:User, thread_id:int) -> Tuple[WebCLIEngineStatus, Optional[ThreadAction]]:
         log_prefix = "WebCLIEngine:async_start_action"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         status, action = await self._async_call(self.start_action, request, user, thread_id)
-        logger.debug(f"{log_prefix}: exit, status={status}, action={action_to_str(action)}")
+        log_api_exit(logger, log_prefix)
         return status, action
 
     async def async_update_action(self, action_id:int, progress:Any) -> WebCLIEngineStatus:
         log_prefix = "WebCLIEngine:async_update_action"
-        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        log_api_enter(logger, log_prefix)
+        logger.debug(f"{log_prefix}: action_id={action_id}")
         r = await self._async_call(self.update_action, action_id, progress)
-        logger.debug(f"{log_prefix}: exit, status={r}")
+        log_api_exit(logger, log_prefix)
         return r
 
     async def async_complete_action(self, action_id:int, response:Any) -> WebCLIEngineStatus:
         log_prefix = "WebCLIEngine:async_complete_action"
-        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
+        log_api_enter(logger, log_prefix)
+        logger.debug(f"{log_prefix}: action_id={action_id}")
         r = await self._async_call(self.complete_action, action_id, response)
-        logger.debug(f"{log_prefix}: exit, status={r}")
+        log_api_exit(logger, log_prefix)
         return r
 
     def _start_action_unsafe(
@@ -431,12 +435,12 @@ class WebCLIEngine:
         #############################################################
         # Start an action
         #############################################################
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         if self.require_shutdown:
             rs = WebCLIEngineStatus.SHUTDOWN_IN_PROGRESS
             if async_call is not None:
                 async_call.finish(return_value=(rs, None))
-            logger.debug(f"{log_prefix}: exit, status={rs}, action=None")
+            log_api_exit(logger, log_prefix)
             return rs, None
         
         found_action_handler = None
@@ -451,7 +455,7 @@ class WebCLIEngine:
             rs = WebCLIEngineStatus.NO_HANDLER
             if async_call is not None:
                 async_call.finish(return_value=(rs, None))
-            logger.debug(f"{log_prefix}: exit, status={rs}, action=None")
+            log_api_exit(logger, log_prefix)
             return rs, None
         
         # persist async action
@@ -498,7 +502,7 @@ class WebCLIEngine:
             rs = WebCLIEngineStatus.DB_FAILED
             if async_call is not None:
                 async_call.finish(return_value=(rs, None))
-            logger.debug(f"{log_prefix}: exit, status=rs, action=None")
+            log_api_exit(logger, log_prefix)
             return rs, None
 
         with self.lock:
@@ -510,7 +514,7 @@ class WebCLIEngine:
             if async_call is not None:
                 async_call.finish(return_value=(rs, thread_action))
             
-            logger.debug(f"{log_prefix}: exit, status={rs}, action={action_to_str(thread_action.action)}")
+            log_api_exit(logger, log_prefix)
             return rs, thread_action
 
     def start_action(
@@ -537,8 +541,8 @@ class WebCLIEngine:
         # Update an async action's progress
         #############################################################
         log_prefix = "WebCLIEngine:update_action_unsafe"
-        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
-        action_info = None
+        log_api_enter(logger, log_prefix)
+        logger.debug(f"{log_prefix}: action_id={action_id}")
 
         # persist action
         try:
@@ -549,14 +553,14 @@ class WebCLIEngine:
                         status = WebCLIEngineStatus.NOT_FOUND
                         if async_call is not None:
                             async_call.finish(return_value=status)
-                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        log_api_exit(logger, log_prefix)
                         return status
                     
                     if db_action.is_completed:
                         status = WebCLIEngineStatus.ACTION_COMPLETED
                         if async_call is not None:
                             async_call.finish(return_value=status)
-                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        log_api_exit(logger, log_prefix)
                         return status
                     
                     db_action.updated_at = get_utc_now()
@@ -568,7 +572,7 @@ class WebCLIEngine:
             status = WebCLIEngineStatus.DB_FAILED
             if async_call is not None:
                 async_call.finish(return_value=status)
-            logger.debug("{log_prefix}: exit, status={status}")
+            log_api_exit(logger, log_prefix)
             return status
 
         logger.debug(f"{log_prefix}: {action_to_str(action)} is updated in database")
@@ -576,7 +580,7 @@ class WebCLIEngine:
         status = WebCLIEngineStatus.OK
         if async_call is not None:
             async_call.finish(return_value=status)
-        logger.debug(f"{log_prefix}: exit, status={status}")
+        log_api_exit(logger, log_prefix)
         return status
     
     def update_action(
@@ -600,8 +604,8 @@ class WebCLIEngine:
         # Complete an action's progress
         #############################################################
         log_prefix = "WebCLIEngine:complete_action_unsafe"
-        logger.debug(f"{log_prefix}: enter, action_id={action_id}")
-        action_info = None
+        log_api_enter(logger, log_prefix)
+        logger.debug(f"{log_prefix}: action_id={action_id}")
         
         # persist action
         try:
@@ -612,14 +616,14 @@ class WebCLIEngine:
                         status = WebCLIEngineStatus.NOT_FOUND
                         if async_call is not None:
                             async_call.finish(return_value=status)
-                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        log_api_exit(logger, log_prefix)
                         return status
 
                     if db_action.is_completed:
                         status = WebCLIEngineStatus.ACTION_COMPLETED
                         if async_call is not None:
                             async_call.finish(return_value=status)
-                        logger.debug(f"{log_prefix}: exit, status={status}")
+                        log_api_exit(logger, log_prefix)
                         return status
 
                     db_action.is_completed = True
@@ -632,7 +636,7 @@ class WebCLIEngine:
             status = WebCLIEngineStatus.DB_FAILED
             if async_call is not None:
                 async_call.finish(return_value=status)
-            logger.debug(f"WebCLIEngine.complete_action_unsafe: exit, status={status}")
+            log_api_exit(logger, log_prefix)
             return status
 
         logger.debug(f"{log_prefix}: {action_to_str(action)} is updated in database")
@@ -640,7 +644,7 @@ class WebCLIEngine:
         status = WebCLIEngineStatus.OK
         if async_call is not None:
             async_call.finish(return_value=status)
-        logger.debug(f"{log_prefix}: exit, status={status}")
+        log_api_exit(logger, log_prefix)
         return status
         
 

@@ -3,78 +3,61 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import List, Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict
 import json
 import asyncio
 import time
 from pydantic import BaseModel
 from fastapi import WebSocket, WebSocketDisconnect
+from webcli2.apilog import log_api_enter, log_api_exit
 
 WEB_SOCKET_PING_INTERVAL = 20  # in seconds
 
-class ClientManager:
-    client_id: str
-    lock: asyncio.Lock
-    queue_dict: Dict[WebSocket, asyncio.Queue[Tuple[int, BaseModel]]]
+class ClientInfo:
+    queue: asyncio.Queue[Tuple[int, BaseModel]]
+    websocket: WebSocket
 
-    def __init__(self, client_id:str):
+    def __init__(self, client_id:str, websocket:WebSocket):
         self.client_id = client_id
-        self.lock = asyncio.Lock()
-        self.queue_dict = {}
+        self.queue = asyncio.Queue()
+        self.websocket = websocket
     
-    async def add_web_socket(self, websocket: WebSocket):
-        async with self.lock:
-            self.queue_dict[websocket] = asyncio.Queue()
-
-    async def remove_web_socket(self, websocket: WebSocket) -> Optional[asyncio.Queue[Tuple[int, BaseModel]]]:
-        async with self.lock:
-            return self.queue_dict.pop(websocket, None)
-
-    # send to all web socket for this client    
-    async def publish_notification(self, action_id:int, response:BaseModel):
-        log_prefix = "ClientManager.publish_notification"
-        logger.debug(f"{log_prefix}: enter")
-        for _, queue in self.queue_dict.items():
-            await queue.put((action_id, response))
-        logger.debug(f"{log_prefix}: notifiction has been pushed to {len(self.queue_dict)} queues")
-        logger.debug(f"{log_prefix}: exit")
-    
-    async def pop_notification(self, websocket:WebSocket, timeout:float) -> Optional[Tuple[int, BaseModel]]:
+    async def pop_notification(self, timeout:float) -> Optional[Tuple[int, BaseModel]]:
         log_prefix = "ClientManager.pop_notification"
-        # logger.debug(f"{log_prefix}: enter")
-        async with self.lock:
-            queue = self.queue_dict[websocket]
+        log_api_enter(logger, log_prefix)
+
         try:
-            r = await asyncio.wait_for(queue.get(), timeout=timeout)
-            logger.debug(f"{log_prefix}: got notification for {self.client_id}")
+            # logger.debug(f"{log_prefix}: wait for notification, client_id={self.client_id}")
+            r = await asyncio.wait_for(self.queue.get(), timeout=timeout)
+            # logger.debug(f"{log_prefix}: got notification, client_id={self.client_id}")
         except asyncio.TimeoutError:
             r = None
             # logger.debug(f"{log_prefix}: no notification for {self.client_id}")
-        # logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
         return r
 
 class WebSocketConnectionManager:
-    client_manager_dict: Dict[str, ClientManager]   # key is client_id
+    client_info_dict: Dict[str, ClientInfo]   # key is client_id
     lock: asyncio.Lock
 
     def __init__(self):
         self.lock = asyncio.Lock()
-        self.client_manager_dict = {}
+        self.client_info_dict = {}
     
     #######################################################################
     # Notify client via web socket that an action is completed
     #######################################################################
     async def publish_notification(self, client_id:str, action_id:int, response:BaseModel):
         log_prefix = "WebSocketConnectionManager.publish_notification"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         async with self.lock:
-            logger.debug(f"{log_prefix}: client_id={client_id}, action_id={action_id}")
-            client_manager = self.client_manager_dict.get(client_id)
-            if client_manager is None:
-                logger.debug(f"{log_prefix}: invalid client_id")
+            client_info = self.client_info_dict.get(client_id)
+            if client_info is None:
+                logger.error(f"{log_prefix}: unable to publish notification, client_id={client_id}, action_id={action_id}, reason: invalid client_id")
             else:
-                await client_manager.publish_notification(action_id, response)
-        logger.debug(f"{log_prefix}: exit")
+                await client_info.queue.put((action_id, response))
+                logger.debug(f"{log_prefix}: notification published to client, client_id={client_id}, action_id={action_id}")
+        log_api_exit(logger, log_prefix)
 
 
     #######################################################################
@@ -88,9 +71,7 @@ class WebSocketConnectionManager:
     #######################################################################
     async def websocket_endpoint(self, websocket: WebSocket):
         log_prefix = "WebSocketConnectionManager.websocket_endpoint"
-        
-        logger.debug(f"{log_prefix}: enter")
-
+        log_api_enter(logger, log_prefix)
         await websocket.accept()
         # client need to report it's client ID in the first place
         data = await websocket.receive_text()
@@ -109,14 +90,20 @@ class WebSocketConnectionManager:
             if client_id is None:
                 logger.debug(f"{log_prefix}: client did not report client id, closing web socket")
                 await websocket.close(code=1000, reason="Client ID not provided")
-                logger.debug(f"{log_prefix}:  exit")
+                log_api_exit(logger, log_prefix)
                 return
 
-            if client_id not in self.client_manager_dict:
-                self.client_manager_dict[client_id] = ClientManager(client_id)
-            client_manager = self.client_manager_dict[client_id]
+            ##########################################################################################
+            # TODO
+            # A client may get disconnected, and click "Connect" button from Web UI without
+            # refreshing the browser and remain using the same client ID
+            # We also need to prevent client from cheating us with a fake client_id and try to 
+            # recevie notification for other client
+            ##########################################################################################
+            if client_id not in self.client_info_dict:
+                self.client_info_dict[client_id] = ClientInfo(client_id, websocket)
+            client_info = self.client_info_dict[client_id]
             logger.info(f"{log_prefix}: client({client_id}) is connected to websocket")
-            await client_manager.add_web_socket(websocket)
             
         try:
             last_ping_time:float = None
@@ -127,31 +114,25 @@ class WebSocketConnectionManager:
                     last_ping_time = now
                     await websocket.send_text("ping")
 
-                r = await client_manager.pop_notification(websocket, 1.0)
+                r = await client_info.pop_notification(10)
                 if r is None:
                     # no notification
                     continue
 
                 action_id, response_model = r
-                logger.debug(f"{log_prefix}: got notification, action_id={action_id}")
+                logger.debug(f"{log_prefix}: got notification, client_id={client_id}, action_id={action_id}")
                 to_notify = {
                     "action_id": action_id,
                     "response": response_model.model_dump(mode="json")
                 }
                 await websocket.send_text(json.dumps(to_notify))
-                logger.debug(f"{log_prefix}: notification passed to websocket client")
+                logger.debug(f"{log_prefix}: notification passed to websocket, client_id={client_id}, action_id={action_id}")
         except WebSocketDisconnect:
-            logger.error(f"{log_prefix}: web socket is disconnected")
-            logger.debug(f"{log_prefix}: removing websocket {websocket} from client({client_id})")
-            queue = await client_manager.remove_web_socket(websocket)
-            if queue is None:
-                logger.warning(f"{log_prefix}: cannot find websocket") # something is wrong, this should not happen
-            else:
-                logger.debug(f"{log_prefix}: cleint {client_id} has a websocket removed")
-            
             async with self.lock:
-                if len(client_manager.queue_dict) == 0:
-                    self.client_manager_dict.pop(client_id)
-                    logger.debug(f"{log_prefix}: cleint {client_id} is removed since no more websocket used by this client")
-
-        logger.debug(f"{log_prefix}: exit")
+                if client_id in self.client_info_dict:
+                    logger.debug(f"{log_prefix}: client({client_id}), websocket is disconnected and removed")
+                    self.client_info_dict.pop(client_id)
+                else:
+                    # How come we cannot find this client_id from client_info_dict?
+                    logger.error(f"{log_prefix}: client({client_id}), websocket is disconnected, we cannot find client_id, please investiage!")
+        log_api_exit(logger, log_prefix)

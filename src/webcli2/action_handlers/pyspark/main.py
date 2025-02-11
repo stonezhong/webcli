@@ -15,6 +15,7 @@ from oracle_spark_tools import OciApiKeyClientFactory
 from oracle_spark_tools.cli import CLIPackage, PackageType, CommandType
 from pydantic import ValidationError
 from webcli2.models import User
+from webcli2.apilog import log_api_enter, log_api_exit
 
 def get_value(value:Optional[str]) -> Optional[str]:
     return None if value is None else b64decode(value.encode("ascii")).decode("utf-8")
@@ -51,12 +52,12 @@ class PySparkRequest(BaseModel):
     #########################################################################
     def get_cli_package(self, action_id:int):
         log_prefix = "PySparkActionHandler.get_cli_package"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
 
         lines = self.command_text.strip().split("\n")
         if len(lines) < 2:
             logger.debug(f"{log_prefix}: no title")
-            logger.debug(f"{log_prefix}: exit")
+            log_api_exit(logger, log_prefix)
             return None
 
         title = lines[0].strip()
@@ -68,7 +69,7 @@ class PySparkRequest(BaseModel):
 
         if command_type is None:
             logger.debug(f"{log_prefix}: invalid title: {title}")
-            logger.debug(f"{log_prefix}: exit")
+            log_api_exit(logger, log_prefix)
             return None
 
         cli_package = CLIPackage(
@@ -80,7 +81,7 @@ class PySparkRequest(BaseModel):
             sequence = str(action_id)
         )
         # caller need to further set client_id
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
         return cli_package
 
 class SparkResponse(BaseModel):
@@ -97,7 +98,7 @@ class PySparkActionHandler(ActionHandler):
 
     def startup(self, webcli_engine:WebCLIEngine):
         log_prefix = "PySparkActionHandler.startup"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         super().startup(webcli_engine)
 
         # start listener thread so we can receive kafka messages
@@ -106,11 +107,11 @@ class PySparkActionHandler(ActionHandler):
         self.listener_thread.start()
         self.stream_client = self.oakcf.get_stream_client()
         logger.info(f"{log_prefix}: PySparkActionHandler is started")
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
 
     def shutdown(self):
         log_prefix = "PySparkActionHandler.shutdown"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
 
         assert self.listener_thread is not None
         assert self.require_shutdown == False
@@ -122,12 +123,12 @@ class PySparkActionHandler(ActionHandler):
         self.webcli_engine = None
 
         logger.info(f"{log_prefix}: PySparkActionHandler has been shutdown")
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
 
 
     def listener(self):
         log_prefix = "PySparkActionHandler.listener"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         stream_client = self.oakcf.get_stream_client() # we create a spearate stream_client, the member stream_client is for sending messages
         r = stream_client.create_group_cursor(
             self.stream_id,
@@ -198,7 +199,7 @@ class PySparkActionHandler(ActionHandler):
                 cursor = r.headers["opc-next-cursor"]
         except Exception:
             logger.error(f"{log_prefix}: failed polling oss messages", exc_info=True)
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
 
     def __init__(self, *, stream_id:str, kafka_consumer_group_name:str):
         self.oakcf = OciApiKeyClientFactory()
@@ -210,32 +211,32 @@ class PySparkActionHandler(ActionHandler):
     def parse_request(self, request:Any, action_id:int) -> Optional[PySparkRequest]:
         log_prefix = "PySparkActionHandler.parse_request"
         # check if we recognize the request JSON
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         try:
             spark_request = PySparkRequest.model_validate(request)
         except ValidationError:
             logger.debug(f"{log_prefix}: invalid request format")
-            logger.debug(f"{log_prefix}: exit")
+            log_api_exit(logger, log_prefix)
             return None
         
         cli_package = spark_request.get_cli_package(action_id)
         if cli_package is None:
             logger.debug(f"{log_prefix}: cannot get CLIPackage from it")
-            logger.debug(f"{log_prefix}: exit")
+            log_api_exit(logger, log_prefix)
             return None
         
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)        
         return spark_request
 
 
     # can you handle this request?
     def can_handle(self, request:Any) -> bool:
         log_prefix = "PySparkActionHandler.can_handle"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         spark_request = self.parse_request(request, 0)
         r = spark_request is not None
         logger.debug(f"{log_prefix}: {'Yes' if r else 'No'}")
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
         return r
 
     def send_cli_package(self, cli_package:CLIPackage):
@@ -243,7 +244,7 @@ class PySparkActionHandler(ActionHandler):
         # send a CLIPackage to kafka so a spark driver can pick it up
         #####################################################
         log_prefix = "PySparkActionHandler.send_cli_package"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         text_to_send = cli_package.model_dump_json()
         message = oci.streaming.models.PutMessagesDetailsEntry(
             key=None,
@@ -253,7 +254,7 @@ class PySparkActionHandler(ActionHandler):
             messages = [message]
         )
         self.stream_client.put_messages(self.stream_id, pmd)
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
 
     # The request is a dict, type field is already spark-cli
     # the "command" field is text
@@ -261,7 +262,7 @@ class PySparkActionHandler(ActionHandler):
     # if first line is %pyspark%, then rest is pyspark code
     def handle(self, action_id:int, request:Any, user:User):
         log_prefix = "PySparkActionHandler.handle"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         # TODO: if we are not able to send message, we should complete the action, set error code
         try:
             spark_request = self.parse_request(request, action_id)
@@ -269,7 +270,7 @@ class PySparkActionHandler(ActionHandler):
             cli_package = spark_request.get_cli_package(action_id)
             assert cli_package is not None
             self.send_cli_package(cli_package)
-            logger.debug(f"{log_prefix}: exit")
+            log_api_exit(logger, log_prefix)
         except:
             logger.debug(f"{log_prefix}: exception captured", exc_info=True)
 
