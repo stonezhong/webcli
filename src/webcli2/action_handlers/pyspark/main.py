@@ -177,6 +177,7 @@ class PySparkActionHandler(ActionHandler):
                         if isinstance(sequence, int):
                             # this CLI package is associated with an action
                             # let's complete the action
+                            logger.debug(f"{log_prefix}: action has been handled successfully, action_id={sequence}")
                             spark_response = SparkResponse(type="spark-cli", cli_package=cli_package)
                             self.webcli_engine.complete_action(
                                 sequence, 

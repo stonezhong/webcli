@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 from webcli2 import WebCLIEngine, ActionHandler
 from pydantic import ValidationError
 from webcli2.models import User
+from webcli2.apilog import log_api_enter, log_api_exit
 
 # Mermaid action handler
 class MermaidRequest(BaseModel):
@@ -22,25 +23,25 @@ class MermaidResponse(BaseModel):
 class MermaidHandler(ActionHandler):
     def parse_request(self, request:Any) -> Optional[MermaidRequest]:
         log_prefix = "MermaidHandler.parse_request"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         try:
             mermaid_request = MermaidRequest.model_validate(request)
         except ValidationError:
             logger.debug(f"{log_prefix}: invalid request format")
-            logger.debug(f"{log_prefix}: exit")
+            log_api_exit(logger, log_prefix)
             return None       
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
         return mermaid_request
 
 
     # can you handle this request?
     def can_handle(self, request:Any) -> bool:
         log_prefix = "MermaidHandler.can_handle"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         mermaid_request = self.parse_request(request)
         r = mermaid_request is not None
         logger.debug(f"{log_prefix}: {'Yes' if r else 'No'}")
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
         return r
 
     # The request is a dict, type field is already spark-cli
@@ -49,17 +50,18 @@ class MermaidHandler(ActionHandler):
     # if first line is %pyspark%, then rest is pyspark code
     def handle(self, action_id:int, request:Any, user:User):
         log_prefix = "MermaidHandler.handle"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
 
         mermaid_request = self.parse_request(request)
         mermaid_response = MermaidResponse(
             type=mermaid_request.type, 
             content = mermaid_request.command_text
         )
+        logger.debug(f"{log_prefix}: action has been handled successfully, action_id={action_id}")
         self.webcli_engine.complete_action(action_id, mermaid_response.model_dump(mode="json"))
         self.webcli_engine.notify_websockt_client(
             mermaid_request.client_id, 
             action_id, 
             mermaid_response
         )
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)

@@ -41,21 +41,21 @@ export default class MermaidActionHandler extends BaseActionHandler {
 
     renderAction(action) {
         return <div>
-            {action.response.chunks.map(chunk => {
+            {action.response.chunks.map((chunk, index) => {
                 if ((chunk.mime === "text/html")||(chunk.mime === "image/png")) {
-                    return <div dangerouslySetInnerHTML={{ __html: chunk.content }} />;
+                    return <div dangerouslySetInnerHTML={{ __html: chunk.content }} key={index}/>;
                 } else if (chunk.mime === "text/json") {
                     try {
                         const json_content = JSON.parse(chunk.content);
-                        return <pre>{JSON.stringify(json_content, null, 4)}</pre>
+                        return <pre key={index}>{JSON.stringify(json_content, null, 4)}</pre>
                     }
                     catch (err) {
                         return <pre>{err.message}</pre>
                     }
                 } else if (chunk.mime === "text/markdown") {
-                    return <ReactMarkdown>{chunk.content}</ReactMarkdown>;
+                    return <ReactMarkdown key={index}>{chunk.content}</ReactMarkdown>;
                 } else if (chunk.mime === "text/plain") {
-                    return <pre>{chunk.content}</pre>
+                    return <pre key={index}>{chunk.content}</pre>
                 } else {
                     throw new Error(`Unrecognized chunk: ${chunk.mime}`);
                 }       

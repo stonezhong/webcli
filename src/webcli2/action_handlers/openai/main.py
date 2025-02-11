@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from webcli2.models import User
 from webcli2.webcli import MIMEType, run_code
 from oracle_spark_tools.cli import CommandType
+from webcli2.apilog import log_api_enter, log_api_exit
 
 from openai import OpenAI
 
@@ -39,29 +40,29 @@ class OpenAIActionHandler(ActionHandler):
 
     def parse_request(self, request:Any) -> Optional[OpenAIRequest]:
         log_prefix = "OpenAIActionHandler.parse_request"
-        logger.debug(f"{log_prefix}: exit")
+        log_api_enter(logger, log_prefix)
 
         try:
             openai_request = OpenAIRequest.model_validate(request)
         except ValidationError:
             logger.debug(f"{log_prefix}: invalid request format")
-            logger.debug(f"{log_prefix}: exit")
+            log_api_exit(logger, log_prefix)
             return None       
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
         return openai_request
 
     # can you handle this request?
     def can_handle(self, request:Any) -> bool:
         log_prefix = "OpenAIActionHandler.can_handle"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
         openai_request = self.parse_request(request)
         r = openai_request is not None
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
         return r
 
     def handle(self, action_id:int, request:Any, user:User):
         log_prefix = "OpenAIActionHandler.handle"
-        logger.debug(f"{log_prefix}: enter")
+        log_api_enter(logger, log_prefix)
 
         openai_request = self.parse_request(request)
         if openai_request.type == "openai":
@@ -98,7 +99,6 @@ class OpenAIActionHandler(ActionHandler):
                     source_code = source_code
                 )
             try:
-                logger.debug("before execute code")
                 output = run_code(
                     {
                         "run_pyspark_python": run_pyspark_python,
@@ -106,7 +106,6 @@ class OpenAIActionHandler(ActionHandler):
                     }, 
                     openai_request.command_text
                 )
-                logger.debug("after execute code")
             except Exception as e:
                 logger.exception("unable to run the code")
                 raise
@@ -136,6 +135,7 @@ class OpenAIActionHandler(ActionHandler):
                 logger.exception("unable to marshal output")
                 raise
 
+        logger.debug(f"{log_prefix}: action has been handled successfully, action_id={action_id}")
         self.webcli_engine.complete_action(action_id, openai_response.model_dump(mode="json"))
         self.webcli_engine.notify_websockt_client(
             openai_request.client_id, 
@@ -143,4 +143,4 @@ class OpenAIActionHandler(ActionHandler):
             openai_response
         )
 
-        logger.debug(f"{log_prefix}: exit")
+        log_api_exit(logger, log_prefix)
