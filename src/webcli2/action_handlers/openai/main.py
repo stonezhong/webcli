@@ -68,7 +68,8 @@ class OpenAIActionHandler(ActionHandler):
         if openai_request.type == "openai":
             completion = self.client.chat.completions.create(
                 # model="gpt-3.5-turbo",
-                model="gpt-4",
+                # model="gpt-4",
+                model="gpt-4o",
                 store=True,
                 messages=[
                     {"role": "user", "content": openai_request.command_text}

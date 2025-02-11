@@ -166,7 +166,7 @@ class PySparkActionHandler(ActionHandler):
                             logger.debug(f"{log_prefix}: not a CLIPackage for response")
                             continue
 
-                        logger.debug(f"{log_prefix}: got cli package: {cli_package}")
+                        logger.debug(f"{log_prefix}: got cli package, package_type={cli_package.package_type}, command_type={cli_package.command_type}, server_id={cli_package.server_id}, client_id={cli_package.client_id}, sequence={cli_package.sequence}")
                         
                         sequence = cli_package.sequence
                         try:
