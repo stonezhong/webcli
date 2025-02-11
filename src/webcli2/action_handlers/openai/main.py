@@ -17,6 +17,24 @@ from webcli2.apilog import log_api_enter, log_api_exit
 
 from openai import OpenAI
 
+######################################################################
+# TODO: look for function feature in openai API, probably
+#       no need to parse the openai output
+######################################################################
+def extract_code(content:str, text_type:str):
+    ret = []
+    p = 0
+    while True:
+        bp = content.find(f"```{text_type}", p)
+        if bp < 0:
+            return ret
+        ep = content.find("```", bp+3)
+        if ep < 0:
+            return ret
+        ret.append(content[bp+3+len(text_type):ep])
+        p = ep+3
+
+
 class OpenAIRequest(BaseModel):
     type: Literal["openai", "python"]
     client_id: str
@@ -99,11 +117,24 @@ class OpenAIActionHandler(ActionHandler):
                     command_type = CommandType.BASH, 
                     source_code = source_code
                 )
+            def openai(question:str):
+                completion = self.client.chat.completions.create(
+                    # model="gpt-3.5-turbo",
+                    # model="gpt-4",
+                    model="gpt-4o",
+                    store=True,
+                    messages=[
+                        {"role": "user", "content": question}
+                    ]
+                )
+                return completion.choices[0].message.content
             try:
                 output = run_code(
                     {
                         "run_pyspark_python": run_pyspark_python,
                         "run_pyspark_bash": run_pyspark_bash,
+                        "openai": openai,
+                        "extract_code": extract_code
                     }, 
                     openai_request.command_text
                 )
