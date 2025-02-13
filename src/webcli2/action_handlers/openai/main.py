@@ -79,6 +79,12 @@ class OpenAIActionHandler(ActionHandler):
         return r
 
     def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
+        try:
+            self._handle(action_id, request, user, action_handler_user_config)
+        except Exception:
+            logger.exception("OpenAIActionHandler.handle: failed to handle request")
+
+    def _handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "OpenAIActionHandler.handle"
         log_api_enter(logger, log_prefix)
 
@@ -102,19 +108,28 @@ class OpenAIActionHandler(ActionHandler):
                 ]
             )
         elif openai_request.type == "python":
+            pyspark_handler_configuration = self.webcli_engine.get_action_handler_configuration("pyspark", user.id)
             pyspark_handler = self.get_action_handler("pyspark")
-            def run_pyspark_python(*, server_id:str, source_code:str) -> str:
+            def run_pyspark_python(source_code:str) -> str:
                 return pyspark_handler.run_pyspark_code(
-                    server_id=server_id, 
+                    server_id=pyspark_handler_configuration.get("server_id", ""), 
                     client_id = openai_request.client_id, 
                     command_type = CommandType.PYTHON, 
                     source_code = source_code
                 )
-            def run_pyspark_bash(*, server_id:str, source_code:str) -> str:
+            def run_pyspark_bash(source_code:str) -> str:
                 return pyspark_handler.run_pyspark_code(
-                    server_id=server_id, 
+                    server_id=pyspark_handler_configuration.get("server_id", ""), 
                     client_id = openai_request.client_id, 
                     command_type = CommandType.BASH, 
+                    source_code = source_code
+                )
+            def run_pyspark_sql(sql_query:str) -> str:
+                source_code = f"spark.sql({repr(sql_query)}).show()"
+                return pyspark_handler.run_pyspark_code(
+                    server_id=pyspark_handler_configuration.get("server_id", ""), 
+                    client_id = openai_request.client_id, 
+                    command_type = CommandType.PYTHON, 
                     source_code = source_code
                 )
             def openai(question:str):
@@ -133,6 +148,7 @@ class OpenAIActionHandler(ActionHandler):
                     {
                         "run_pyspark_python": run_pyspark_python,
                         "run_pyspark_bash": run_pyspark_bash,
+                        "run_pyspark_sql": run_pyspark_sql,
                         "openai": openai,
                         "extract_code": extract_code
                     }, 
