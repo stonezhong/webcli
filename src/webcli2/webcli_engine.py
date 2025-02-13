@@ -5,6 +5,7 @@ from typing import Dict, Tuple, Any, List, Optional
 from datetime import datetime, timezone
 from asyncio import Event, get_event_loop, AbstractEventLoop, wait_for, TimeoutError
 import enum
+import os
 from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 import threading
@@ -210,6 +211,7 @@ class UserManager:
         return user if self.verify_password(password, user.password_hash) else None
 
 class WebCLIEngine:
+    users_home_dir: str                             # The parent directory for all user's home dir
     db_engine: Engine                               # SQLAlchemy engine
     wsc_manager: WebSocketConnectionManager         # Web Socket Connection Manager
     executor: Optional[ThreadPoolExecutor]          # A thread pool
@@ -218,9 +220,17 @@ class WebCLIEngine:
     require_shutdown: Optional[bool]                # True if shutdown has been requested
     action_handlers: Dict[str, ActionHandler]       # action handlers map
 
-    def __init__(self, *, db_engine:Engine, wsc_manager:WebSocketConnectionManager, action_handlers:Dict[str, ActionHandler]):
+    def __init__(
+        self, 
+        *, 
+        users_home_dir:str,
+        db_engine:Engine, 
+        wsc_manager:WebSocketConnectionManager, 
+        action_handlers:Dict[str, ActionHandler]
+    ):
         log_prefix = "WebCLIEngine.__init__"
         log_api_enter(logger, log_prefix)
+        self.users_home_dir = users_home_dir
         self.db_engine = db_engine
         self.wsc_manager = wsc_manager
         self.executor = None
@@ -228,6 +238,7 @@ class WebCLIEngine:
         self.lock = threading.Lock()
         self.require_shutdown = None
         self.action_handlers = copy(action_handlers)
+        os.makedirs(self.users_home_dir, exist_ok=True)
         log_api_exit(logger, log_prefix)
 
 

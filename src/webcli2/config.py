@@ -20,12 +20,22 @@ class CoreConfig(BaseModel):
     private_key: str            # for generating JWT token
     public_key: str             # for verifying JWT token
     resource_dir:str            
+    users_home_dir:str
 
 #################################################
 # resource_dir
 #
 # When server send response to client, it support binary format, for example images, etc
 # We will generate binary file here and change the output to points to here
+#################################################
+
+#################################################
+# users_home_dir
+#
+# This is the parent directory for all user home directory
+# use's home directory is
+# {config.core.users_home_dir}/{user.id}
+#
 #################################################
 
 class ActionHandlerInfo(BaseModel):
@@ -53,6 +63,7 @@ def load_config() ->Optional[WebCLIApplicationConfig]:
     config.core.home_dir = webcli_home
 
     config.core.resource_dir = normalize_filename(webcli_home, config.core.resource_dir)
+    config.core.users_home_dir = normalize_filename(webcli_home, config.core.users_home_dir)
     config.core.log_dir = normalize_filename(webcli_home, config.core.log_dir)
     config.core.log_config_filename = normalize_filename(webcli_home, config.core.log_config_filename)
     

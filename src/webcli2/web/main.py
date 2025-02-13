@@ -63,6 +63,7 @@ config_action_handlers()
 engine = create_engine(config.core.db_url)
 
 webcli_engine = WebCLIEngine(
+    users_home_dir = config.core.users_home_dir,
     db_engine = engine,
     wsc_manager=WebSocketConnectionManager(),
     action_handlers = action_handlers
