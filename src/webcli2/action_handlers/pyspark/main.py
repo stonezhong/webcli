@@ -275,8 +275,9 @@ class PySparkActionHandler(ActionHandler):
         except:
             logger.debug(f"{log_prefix}: exception captured", exc_info=True)
 
+    def run_pyspark_code(self, *, user:User, client_id:str, command_type:CommandType, source_code:str)->str:
+        pyspark_handler_configuration = self.webcli_engine.get_action_handler_configuration("pyspark", user.id)
 
-    def run_pyspark_code(self, *, server_id:str, client_id:str, command_type:CommandType, source_code:str)->str:
         sequence = str(uuid.uuid4())
         event = threading.Event()
 
@@ -284,7 +285,7 @@ class PySparkActionHandler(ActionHandler):
             package_type = PackageType.REQUEST,
             command_type = command_type,
             command_text = source_code,
-            server_id = server_id,
+            server_id = pyspark_handler_configuration.configuration.get("server_id", ""),
             client_id = client_id,
             sequence = sequence
         )

@@ -1,21 +1,33 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Any, Optional, Literal, List
+from typing import Any, Optional, Literal, List, Dict, TextIO, BinaryIO, Union
 from pydantic import BaseModel, ValidationError
 import uuid
 import os
-import json
+import argparse
+import shlex
+import code
 
 from webcli2.config import WebCLIApplicationConfig, load_config
 from webcli2 import WebCLIEngine, ActionHandler
 from pydantic import ValidationError
 from webcli2.models import User
-from webcli2.webcli import MIMEType, run_code
+from webcli2.webcli import MIMEType, run_code, get_or_create_stdout, CLIOutput, CLIPrint
 from oracle_spark_tools.cli import CommandType
 from webcli2.apilog import log_api_enter, log_api_exit
 
 from openai import OpenAI
+
+######################################################################
+# ArgumentParser.parse() failure causing application quit
+# To workaround it, we need to re-define exit to avoid application 
+# quit
+######################################################################
+class NoExitArgumentParser(argparse.ArgumentParser):
+    def exit(self, status=0, message=None):
+        if message:
+            raise ValueError(message)
 
 ######################################################################
 # TODO: look for function feature in openai API, probably
@@ -39,13 +51,22 @@ class OpenAIRequest(BaseModel):
     type: Literal["openai", "python"]
     client_id: str
     command_text: str
-
-class OpenAIResponseChunk(BaseModel):
-    mime: MIMEType
-    content: str
+    args: str
 
 class OpenAIResponse(BaseModel):
-    chunks: List[OpenAIResponseChunk]
+    stdout: CLIOutput
+
+def render_response(response:CLIOutput, action_id:int, resource_dir:str):
+    for chunk in response.chunks:
+        if chunk.mime == MIMEType.PNG:
+            fname = f"{str(uuid.uuid4())}.png"
+            resource_dir = os.path.join(resource_dir, str(action_id))
+            os.makedirs(resource_dir, exist_ok=True)
+            # write to resource file
+            with open(os.path.join(resource_dir, fname), "wb") as resource_f:
+                resource_f.write(chunk.content)
+            chunk.content = f"<img src='/resources/{str(action_id)}/{fname}' />"
+
 
 class OpenAIActionHandler(ActionHandler):
     client: OpenAI
@@ -124,18 +145,69 @@ class OpenAIActionHandler(ActionHandler):
         # TODO: in case of exception, absorb the error and surface the error in openai_response
         log_prefix = "OpenAIActionHandler.handle_python"
         log_api_enter(logger, log_prefix)
-        pyspark_handler_configuration = self.webcli_engine.get_action_handler_configuration("pyspark", user.id)
+
+        stdout = get_or_create_stdout(user)
+        cli_print = CLIPrint(stdout)
+        openai_response = OpenAIResponse(stdout=CLIOutput(chunks=[]))
+
+        # parse args
+        try:
+            parser = NoExitArgumentParser(description='')
+            parser.add_argument("--load", type=str, required=False, help="load python file")
+            parser.add_argument("--save", type=str, required=False, help="save python file")
+            parser.add_argument("--print", action="store_true", help="print python file")
+            args = parser.parse_args(shlex.split(openai_request.args))
+        except ValueError:
+            logger.exception(f"{log_prefix}: %python% action has wrong arguments: {openai_request.args}, action_id={action_id}")
+            args = None
+
+        if args is not None and args.load is not None and args.save is not None:
+            logger.warning(f"{log_prefix}: %python% action has wrong arguments: both load and save are set, action_id={action_id}")
+            args = None
+        
+        if args is None:
+            cli_print("wrong arguments for %python% action", mime=MIMEType.TEXT)
+            openai_response.stdout.chunks = stdout.chunks.copy()
+            stdout.chunks.clear()
+            log_api_exit(logger, log_prefix)
+            return openai_response
+        
+        extra_code = ""
+        if args.save is not None:
+            user_home_dir = os.path.join(self.config.core.users_home_dir, str(user.id))
+            os.makedirs(user_home_dir, exist_ok=True)
+            filename = os.path.join(user_home_dir, args.save)
+            with open(filename, "wt") as f:
+                f.write(openai_request.command_text)
+        elif args.load is not None:
+            user_home_dir = os.path.join(self.config.core.users_home_dir, str(user.id))
+            os.makedirs(user_home_dir, exist_ok=True)
+            filename = os.path.join(user_home_dir, args.load)
+            try:
+                with open(filename, "rt") as f:
+                    extra_code = f.read()
+            except FileNotFoundError:
+                pass
+            if args.print:
+                cli_print(extra_code, mime=MIMEType.TEXT)
+
         pyspark_handler = self.get_action_handler("pyspark")
+        def cli_open(*args, **kwargs)->Union[BinaryIO, TextIO]:
+            filename = args[0]
+            if filename.startswith("/"):
+                raise ValueError(f"filename cannot start with /")
+            new_args = [ os.path.join(self.config.core.users_home_dir, str(user.id), filename) ] + args[1:]
+            return open(*new_args, **kwargs)
         def run_pyspark_python(source_code:str) -> str:
             return pyspark_handler.run_pyspark_code(
-                server_id=pyspark_handler_configuration.get("server_id", ""), 
+                user = user,
                 client_id = openai_request.client_id, 
                 command_type = CommandType.PYTHON, 
                 source_code = source_code
             )
         def run_pyspark_bash(source_code:str) -> str:
             return pyspark_handler.run_pyspark_code(
-                server_id=pyspark_handler_configuration.get("server_id", ""), 
+                user = user,
                 client_id = openai_request.client_id, 
                 command_type = CommandType.BASH, 
                 source_code = source_code
@@ -143,7 +215,7 @@ class OpenAIActionHandler(ActionHandler):
         def run_pyspark_sql(sql_query:str) -> str:
             source_code = f"spark.sql({repr(sql_query)}).show()"
             return pyspark_handler.run_pyspark_code(
-                server_id=pyspark_handler_configuration.get("server_id", ""), 
+                user = user,
                 client_id = openai_request.client_id, 
                 command_type = CommandType.PYTHON, 
                 source_code = source_code
@@ -159,48 +231,25 @@ class OpenAIActionHandler(ActionHandler):
                 ]
             )
             return completion.choices[0].message.content
-        try:
-            output = run_code(
-                {
-                    "run_pyspark_python": run_pyspark_python,
-                    "run_pyspark_bash": run_pyspark_bash,
-                    "run_pyspark_sql": run_pyspark_sql,
-                    "openai": openai,
-                    "extract_code": extract_code
-                }, 
-                openai_request.command_text
-            )
-        except Exception as e:
-            logger.exception("unable to run the code")
-            raise
 
-        # marshal the output
-        openai_response = OpenAIResponse(chunks=[])
-        try:
-            for chunk in output.chunks:
-                if chunk.mime == MIMEType.PNG:
-                    fname = f"{str(uuid.uuid4())}.png"
-                    resource_dir = os.path.join(self.config.core.resource_dir, str(action_id))
-                    os.makedirs(resource_dir, exist_ok=True)
-                    # write to resource file
-                    with open(os.path.join(resource_dir, fname), "wb") as resource_f:
-                        resource_f.write(chunk.content)
-                    openai_response_chunk = OpenAIResponseChunk(
-                        mime = chunk.mime,
-                        content=f"<img src='/resources/{str(action_id)}/{fname}' />"
-                    )
-                else:
-                    openai_response_chunk = OpenAIResponseChunk(
-                        mime = chunk.mime,
-                        content=chunk.content
-                    )
-                openai_response.chunks.append(openai_response_chunk)
-        except Exception as e:
-            logger.exception("unable to marshal output")
-            raise
+        new_output = run_code(
+            user,
+            {
+                "run_pyspark_python": run_pyspark_python,
+                "run_pyspark_bash": run_pyspark_bash,
+                "run_pyspark_sql": run_pyspark_sql,
+                "openai": openai,
+                "extract_code": extract_code,
+                "cli_open": cli_open
+            }, 
+            extra_code + "\n" + openai_request.command_text
+        )
+
+        openai_response.stdout.chunks = stdout.chunks.copy()
+        stdout.chunks.clear()
+        render_response(openai_response.stdout, action_id, self.config.core.resource_dir)
         log_api_exit(logger, log_prefix)
         return openai_response
-
 
     def _handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "OpenAIActionHandler.handle"

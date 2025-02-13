@@ -26,22 +26,25 @@ export default class MermaidActionHandler extends BaseActionHandler {
             return null;
         }
 
-        const title = lines[0].trim()
-        if (!["%openai%", "%python%"].includes(title)) {
+        const title = lines[0].trim();
+        const verb = title.split(" ")[0];
+        const args = title.slice(verb.length).trim();
+        if (!["%openai%", "%python%"].includes(verb)) {
             return null;
         }
 
         const request = {
-            type: title.slice(1, -1),
+            type: verb.slice(1, -1),
             client_id: this.clientId,
-            command_text: lines.slice(1).join("\n")
+            command_text: lines.slice(1).join("\n"),
+            args: args
         }
         return request;
     }
 
     renderAction(action) {
         return <div>
-            {action.response.chunks.map((chunk, index) => {
+            {action.response.stdout.chunks.map((chunk, index) => {
                 if ((chunk.mime === "text/html")||(chunk.mime === "image/png")) {
                     return <div dangerouslySetInnerHTML={{ __html: chunk.content }} key={index}/>;
                 } else if (chunk.mime === "text/json") {
