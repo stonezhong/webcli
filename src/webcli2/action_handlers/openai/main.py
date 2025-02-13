@@ -84,104 +84,133 @@ class OpenAIActionHandler(ActionHandler):
         except Exception:
             logger.exception("OpenAIActionHandler.handle: failed to handle request")
 
-    def _handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
-        log_prefix = "OpenAIActionHandler.handle"
+    def handle_openai(
+        self, 
+        action_id:int, 
+        openai_request:OpenAIRequest,
+        user:User, 
+        action_handler_user_config:dict
+    ) -> OpenAIResponse:
+        # TODO: in case of exception, absorb the error and surface the error in openai_response
+        log_prefix = "OpenAIActionHandler.handle_openai"
         log_api_enter(logger, log_prefix)
+        completion = self.client.chat.completions.create(
+            # model="gpt-3.5-turbo",
+            # model="gpt-4",
+            model="gpt-4o",
+            store=True,
+            messages=[
+                {"role": "user", "content": openai_request.command_text}
+            ]
+        )
+        openai_response = OpenAIResponse(
+            chunks=[
+                OpenAIResponseChunk(
+                    mime = MIMEType.MARKDOWN,
+                    content = completion.choices[0].message.content
+                )
+            ]
+        )
+        log_api_exit(logger, log_prefix)
+        return openai_response
 
-        openai_request = self.parse_request(request)
-        if openai_request.type == "openai":
+    def handle_python(
+        self, 
+        action_id:int, 
+        openai_request:OpenAIRequest,
+        user:User, 
+        action_handler_user_config:dict
+    ) -> OpenAIResponse:
+        # TODO: in case of exception, absorb the error and surface the error in openai_response
+        log_prefix = "OpenAIActionHandler.handle_python"
+        log_api_enter(logger, log_prefix)
+        pyspark_handler_configuration = self.webcli_engine.get_action_handler_configuration("pyspark", user.id)
+        pyspark_handler = self.get_action_handler("pyspark")
+        def run_pyspark_python(source_code:str) -> str:
+            return pyspark_handler.run_pyspark_code(
+                server_id=pyspark_handler_configuration.get("server_id", ""), 
+                client_id = openai_request.client_id, 
+                command_type = CommandType.PYTHON, 
+                source_code = source_code
+            )
+        def run_pyspark_bash(source_code:str) -> str:
+            return pyspark_handler.run_pyspark_code(
+                server_id=pyspark_handler_configuration.get("server_id", ""), 
+                client_id = openai_request.client_id, 
+                command_type = CommandType.BASH, 
+                source_code = source_code
+            )
+        def run_pyspark_sql(sql_query:str) -> str:
+            source_code = f"spark.sql({repr(sql_query)}).show()"
+            return pyspark_handler.run_pyspark_code(
+                server_id=pyspark_handler_configuration.get("server_id", ""), 
+                client_id = openai_request.client_id, 
+                command_type = CommandType.PYTHON, 
+                source_code = source_code
+            )
+        def openai(question:str):
             completion = self.client.chat.completions.create(
                 # model="gpt-3.5-turbo",
                 # model="gpt-4",
                 model="gpt-4o",
                 store=True,
                 messages=[
-                    {"role": "user", "content": openai_request.command_text}
+                    {"role": "user", "content": question}
                 ]
             )
-            openai_response = OpenAIResponse(
-                chunks=[
-                    OpenAIResponseChunk(
-                        mime = MIMEType.MARKDOWN,
-                        content = completion.choices[0].message.content
-                    )
-                ]
+            return completion.choices[0].message.content
+        try:
+            output = run_code(
+                {
+                    "run_pyspark_python": run_pyspark_python,
+                    "run_pyspark_bash": run_pyspark_bash,
+                    "run_pyspark_sql": run_pyspark_sql,
+                    "openai": openai,
+                    "extract_code": extract_code
+                }, 
+                openai_request.command_text
             )
-        elif openai_request.type == "python":
-            pyspark_handler_configuration = self.webcli_engine.get_action_handler_configuration("pyspark", user.id)
-            pyspark_handler = self.get_action_handler("pyspark")
-            def run_pyspark_python(source_code:str) -> str:
-                return pyspark_handler.run_pyspark_code(
-                    server_id=pyspark_handler_configuration.get("server_id", ""), 
-                    client_id = openai_request.client_id, 
-                    command_type = CommandType.PYTHON, 
-                    source_code = source_code
-                )
-            def run_pyspark_bash(source_code:str) -> str:
-                return pyspark_handler.run_pyspark_code(
-                    server_id=pyspark_handler_configuration.get("server_id", ""), 
-                    client_id = openai_request.client_id, 
-                    command_type = CommandType.BASH, 
-                    source_code = source_code
-                )
-            def run_pyspark_sql(sql_query:str) -> str:
-                source_code = f"spark.sql({repr(sql_query)}).show()"
-                return pyspark_handler.run_pyspark_code(
-                    server_id=pyspark_handler_configuration.get("server_id", ""), 
-                    client_id = openai_request.client_id, 
-                    command_type = CommandType.PYTHON, 
-                    source_code = source_code
-                )
-            def openai(question:str):
-                completion = self.client.chat.completions.create(
-                    # model="gpt-3.5-turbo",
-                    # model="gpt-4",
-                    model="gpt-4o",
-                    store=True,
-                    messages=[
-                        {"role": "user", "content": question}
-                    ]
-                )
-                return completion.choices[0].message.content
-            try:
-                output = run_code(
-                    {
-                        "run_pyspark_python": run_pyspark_python,
-                        "run_pyspark_bash": run_pyspark_bash,
-                        "run_pyspark_sql": run_pyspark_sql,
-                        "openai": openai,
-                        "extract_code": extract_code
-                    }, 
-                    openai_request.command_text
-                )
-            except Exception as e:
-                logger.exception("unable to run the code")
-                raise
+        except Exception as e:
+            logger.exception("unable to run the code")
+            raise
 
-            # marshal the output
-            openai_response = OpenAIResponse(chunks=[])
-            try:
-                for chunk in output.chunks:
-                    if chunk.mime == MIMEType.PNG:
-                        fname = f"{str(uuid.uuid4())}.png"
-                        resource_dir = os.path.join(self.config.core.resource_dir, str(action_id))
-                        os.makedirs(resource_dir, exist_ok=True)
-                        # write to resource file
-                        with open(os.path.join(resource_dir, fname), "wb") as resource_f:
-                            resource_f.write(chunk.content)
-                        openai_response_chunk = OpenAIResponseChunk(
-                            mime = chunk.mime,
-                            content=f"<img src='/resources/{str(action_id)}/{fname}' />"
-                        )
-                    else:
-                        openai_response_chunk = OpenAIResponseChunk(
-                            mime = chunk.mime,
-                            content=chunk.content
-                        )
-                    openai_response.chunks.append(openai_response_chunk)
-            except Exception as e:
-                logger.exception("unable to marshal output")
-                raise
+        # marshal the output
+        openai_response = OpenAIResponse(chunks=[])
+        try:
+            for chunk in output.chunks:
+                if chunk.mime == MIMEType.PNG:
+                    fname = f"{str(uuid.uuid4())}.png"
+                    resource_dir = os.path.join(self.config.core.resource_dir, str(action_id))
+                    os.makedirs(resource_dir, exist_ok=True)
+                    # write to resource file
+                    with open(os.path.join(resource_dir, fname), "wb") as resource_f:
+                        resource_f.write(chunk.content)
+                    openai_response_chunk = OpenAIResponseChunk(
+                        mime = chunk.mime,
+                        content=f"<img src='/resources/{str(action_id)}/{fname}' />"
+                    )
+                else:
+                    openai_response_chunk = OpenAIResponseChunk(
+                        mime = chunk.mime,
+                        content=chunk.content
+                    )
+                openai_response.chunks.append(openai_response_chunk)
+        except Exception as e:
+            logger.exception("unable to marshal output")
+            raise
+        log_api_exit(logger, log_prefix)
+        return openai_response
+
+
+    def _handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
+        log_prefix = "OpenAIActionHandler.handle"
+        log_api_enter(logger, log_prefix)
+
+        openai_request = self.parse_request(request)
+        if openai_request.type == "openai":
+            openai_response = self.handle_openai(action_id, openai_request, user, action_handler_user_config)
+        elif openai_request.type == "python":
+            openai_response = self.handle_python(action_id, openai_request, user, action_handler_user_config)
 
         logger.debug(f"{log_prefix}: action has been handled successfully, action_id={action_id}")
         self.webcli_engine.complete_action(action_id, openai_response.model_dump(mode="json"))
