@@ -13,7 +13,7 @@ from webcli2.config import WebCLIApplicationConfig, load_config
 from webcli2 import WebCLIEngine, ActionHandler
 from pydantic import ValidationError
 from webcli2.models import User
-from webcli2.webcli import MIMEType, run_code, get_or_create_stdout, CLIOutput, CLIPrint
+from webcli2.webcli import MIMEType, run_code, get_or_create_stdout, CLIOutput, CLIPrint, CLIOutputChunk
 from oracle_spark_tools.cli import CommandType
 from webcli2.apilog import log_api_enter, log_api_exit
 
@@ -125,12 +125,14 @@ class OpenAIActionHandler(ActionHandler):
             ]
         )
         openai_response = OpenAIResponse(
-            chunks=[
-                OpenAIResponseChunk(
-                    mime = MIMEType.MARKDOWN,
-                    content = completion.choices[0].message.content
-                )
-            ]
+            stdout=CLIOutput(
+                chunks=[
+                    CLIOutputChunk(
+                        mime = MIMEType.MARKDOWN,
+                        content = completion.choices[0].message.content
+                    )
+                ]
+            )
         )
         log_api_exit(logger, log_prefix)
         return openai_response
@@ -232,7 +234,7 @@ class OpenAIActionHandler(ActionHandler):
             )
             return completion.choices[0].message.content
 
-        new_output = run_code(
+        run_code(
             user,
             {
                 "run_pyspark_python": run_pyspark_python,
