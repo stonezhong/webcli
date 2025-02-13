@@ -8,13 +8,16 @@ import os
 import argparse
 import shlex
 import code
+import io
+import json
 
 from webcli2.config import WebCLIApplicationConfig, load_config
-from webcli2 import WebCLIEngine, ActionHandler
+from webcli2 import ActionHandler
 from pydantic import ValidationError
+from webcli2.webcli_engine import TheradContext, thread_context_var
 from webcli2.models import User
-from webcli2.webcli import MIMEType, run_code, get_or_create_stdout, CLIOutput, CLIPrint, CLIOutputChunk
-from oracle_spark_tools.cli import CommandType
+from webcli2.webcli.main import run_code
+from webcli2.webcli.output import MIMEType, CLIOutput, CLIOutputChunk
 from webcli2.apilog import log_api_enter, log_api_exit
 
 from openai import OpenAI
@@ -28,23 +31,6 @@ class NoExitArgumentParser(argparse.ArgumentParser):
     def exit(self, status=0, message=None):
         if message:
             raise ValueError(message)
-
-######################################################################
-# TODO: look for function feature in openai API, probably
-#       no need to parse the openai output
-######################################################################
-def extract_code(content:str, text_type:str):
-    ret = []
-    p = 0
-    while True:
-        bp = content.find(f"```{text_type}", p)
-        if bp < 0:
-            return ret
-        ep = content.find("```", bp+3)
-        if ep < 0:
-            return ret
-        ret.append(content[bp+3+len(text_type):ep])
-        p = ep+3
 
 
 class OpenAIRequest(BaseModel):
@@ -142,14 +128,35 @@ class OpenAIActionHandler(ActionHandler):
         action_id:int, 
         openai_request:OpenAIRequest,
         user:User, 
-        action_handler_user_config:dict
+        action_handler_user_config:dict,
+        tc:TheradContext
     ) -> OpenAIResponse:
         # TODO: in case of exception, absorb the error and surface the error in openai_response
         log_prefix = "OpenAIActionHandler.handle_python"
         log_api_enter(logger, log_prefix)
 
-        stdout = get_or_create_stdout(user)
-        cli_print = CLIPrint(stdout)
+        def cli_print(content, mime:str=MIMEType.HTML, name:Optional[str]=None):
+            tc_now = thread_context_var.get()
+            if isinstance(content, io.StringIO):
+                actual_content = content.getvalue()
+            elif isinstance(content, io.BytesIO):
+                actual_content = content.getvalue()
+            elif isinstance(content, bytes):
+                actual_content = content
+            elif isinstance(content, str):
+                actual_content = content
+            elif isinstance(content, dict):
+                actual_content = json.dumps(content)
+            else:
+                raise ValueError(f"content has wrong type: {type(content)}")
+            
+            chunk = CLIOutputChunk(
+                name = name,
+                mime = mime,
+                content=actual_content
+            )
+            tc_now.stdout.chunks.append(chunk)
+
         openai_response = OpenAIResponse(stdout=CLIOutput(chunks=[]))
 
         # parse args
@@ -169,8 +176,8 @@ class OpenAIActionHandler(ActionHandler):
         
         if args is None:
             cli_print("wrong arguments for %python% action", mime=MIMEType.TEXT)
-            openai_response.stdout.chunks = stdout.chunks.copy()
-            stdout.chunks.clear()
+            openai_response.stdout.chunks = tc.stdout.chunks.copy()
+            tc.stdout.chunks.clear()
             log_api_exit(logger, log_prefix)
             return openai_response
         
@@ -193,36 +200,13 @@ class OpenAIActionHandler(ActionHandler):
             if args.print:
                 cli_print(extra_code, mime=MIMEType.TEXT)
 
-        pyspark_handler = self.get_action_handler("pyspark")
         def cli_open(*args, **kwargs)->Union[BinaryIO, TextIO]:
             filename = args[0]
             if filename.startswith("/"):
                 raise ValueError(f"filename cannot start with /")
-            new_args = [ os.path.join(self.config.core.users_home_dir, str(user.id), filename) ] + args[1:]
+            new_args = [ os.path.join(self.config.core.users_home_dir, str(user.id), filename) ] + list(args[1:])
             return open(*new_args, **kwargs)
-        def run_pyspark_python(source_code:str) -> str:
-            return pyspark_handler.run_pyspark_code(
-                user = user,
-                client_id = openai_request.client_id, 
-                command_type = CommandType.PYTHON, 
-                source_code = source_code
-            )
-        def run_pyspark_bash(source_code:str) -> str:
-            return pyspark_handler.run_pyspark_code(
-                user = user,
-                client_id = openai_request.client_id, 
-                command_type = CommandType.BASH, 
-                source_code = source_code
-            )
-        def run_pyspark_sql(sql_query:str) -> str:
-            source_code = f"spark.sql({repr(sql_query)}).show()"
-            return pyspark_handler.run_pyspark_code(
-                user = user,
-                client_id = openai_request.client_id, 
-                command_type = CommandType.PYTHON, 
-                source_code = source_code
-            )
-        def openai(question:str):
+        def openai(question:str, tools=None):
             completion = self.client.chat.completions.create(
                 # model="gpt-3.5-turbo",
                 # model="gpt-4",
@@ -230,25 +214,26 @@ class OpenAIActionHandler(ActionHandler):
                 store=True,
                 messages=[
                     {"role": "user", "content": question}
-                ]
+                ],
+                tools=tools
             )
-            return completion.choices[0].message.content
+            return completion
 
         run_code(
+            tc, 
             user,
+            openai_request.client_id,
             {
-                "run_pyspark_python": run_pyspark_python,
-                "run_pyspark_bash": run_pyspark_bash,
-                "run_pyspark_sql": run_pyspark_sql,
                 "openai": openai,
-                "extract_code": extract_code,
-                "cli_open": cli_open
+                "cli_open": cli_open,
+                "cli_print": cli_print,
+                "get_action_handler": self.get_action_handler
             }, 
             extra_code + "\n" + openai_request.command_text
         )
 
-        openai_response.stdout.chunks = stdout.chunks.copy()
-        stdout.chunks.clear()
+        openai_response.stdout.chunks = tc.stdout.chunks.copy()
+        tc.stdout.chunks.clear()
         render_response(openai_response.stdout, action_id, self.config.core.resource_dir)
         log_api_exit(logger, log_prefix)
         return openai_response
@@ -257,11 +242,16 @@ class OpenAIActionHandler(ActionHandler):
         log_prefix = "OpenAIActionHandler.handle"
         log_api_enter(logger, log_prefix)
 
+        tc = TheradContext(user, action_id)
+        thread_context_var.set(tc)
+
         openai_request = self.parse_request(request)
+        tc.client_id = openai_request.client_id
+
         if openai_request.type == "openai":
             openai_response = self.handle_openai(action_id, openai_request, user, action_handler_user_config)
         elif openai_request.type == "python":
-            openai_response = self.handle_python(action_id, openai_request, user, action_handler_user_config)
+            openai_response = self.handle_python(action_id, openai_request, user, action_handler_user_config, tc)
 
         logger.debug(f"{log_prefix}: action has been handled successfully, action_id={action_id}")
         self.webcli_engine.complete_action(action_id, openai_response.model_dump(mode="json"))

@@ -3,16 +3,18 @@ logger = logging.getLogger(__name__)
 
 from typing import Dict, Tuple, Any, List, Optional
 from datetime import datetime, timezone
-from asyncio import Event, get_event_loop, AbstractEventLoop, wait_for, TimeoutError
+from asyncio import Event, get_event_loop, AbstractEventLoop
 import enum
 import os
 from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import asyncio
+import uuid
+from contextvars import ContextVar
+
 from pydantic import BaseModel
 import bcrypt
-import uuid
 import jwt
 
 from sqlalchemy.orm import Session
@@ -26,8 +28,23 @@ from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchA
     PatchThreadActionRequest, PatchThreadRequest
 from webcli2.websocket import WebSocketConnectionManager
 from webcli2.apilog import log_api_enter, log_api_exit
+from webcli2.webcli.output import CLIOutput
 
 from abc import ABC, abstractmethod
+
+class TheradContext:
+    user:User
+    client_id:Optional[str]
+    action_id:int
+    stdout: CLIOutput
+
+    def __init__(self, user:User, action_id:int):
+        self.user = user
+        self.client_id = None
+        self.action_id = action_id
+        self.stdout = CLIOutput(chunks=[])
+
+thread_context_var = ContextVar("thread_context", default=None)
 
 #############################################################
 # Get the current UTC time
