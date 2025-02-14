@@ -351,7 +351,7 @@ export class ThreadPage extends React.Component {
             </table>
             
             {
-                (threadAction.show_question)?<div className="question-wrapper"><pre>{action.raw_text}</pre></div>:null
+                (threadAction.show_question)?<div className="question-wrapper"><pre className="question-raw-text">{action.raw_text}</pre></div>:null
             }
             {
                 (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():<div className="answer-wrapper">{actionHandler.renderAction(action)}</div>):null
@@ -583,15 +583,17 @@ export class ThreadPage extends React.Component {
                             </Col>
                         </Row>
 
-                        <Row className="answer-panel">
+                        <Row className="answer-panel-row">
                             <Col>
-                            {
-                                this.state.threadActionWrappers.map(threadActionWrapper => {
-                                    return <div key={threadActionWrapper.threadAction.id}>
-                                        {this.renderAction(threadActionWrapper)}
-                                    </div>
-                                })
-                            }
+                                <div className="answer-panel">
+                                {
+                                    this.state.threadActionWrappers.map(threadActionWrapper => {
+                                        return <div key={threadActionWrapper.threadAction.id}>
+                                            {this.renderAction(threadActionWrapper)}
+                                        </div>
+                                    })
+                                }
+                                </div>
                             </Col>
                         </Row>
                     </Container>
