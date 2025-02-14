@@ -583,6 +583,8 @@ export class ThreadPage extends React.Component {
                             </Col>
                         </Row>
 
+                        <hr style={{margin:"6px"}} />
+
                         <Row className="answer-panel-row">
                             <Col>
                                 <div className="answer-panel">
