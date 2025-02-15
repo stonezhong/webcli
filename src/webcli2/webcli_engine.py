@@ -1,3 +1,5 @@
+from __future__ import annotations  # Enables forward declaration
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchA
 from webcli2.websocket import WebSocketConnectionManager
 from webcli2.apilog import log_api_enter, log_api_exit
 from webcli2.webcli.output import CLIOutput
+import webcli2.action_handlers.action_handler as action_handler
 
 from abc import ABC, abstractmethod
 
@@ -90,44 +93,6 @@ class AsyncCall:
     async def async_await_return(self) -> Any:
         await self.event.wait()
         return self.return_value
-
-class ActionHandler(ABC):
-    webcli_engine: Optional["WebCLIEngine"] = None
-    wsc_manager: Optional[WebSocketConnectionManager] = None
-    require_shutdown: Optional[bool] = None
-
-    # can you handle this request?
-    @abstractmethod
-    def can_handle(self, request:Any) -> bool:
-        pass # pragma: no cover
-
-    def startup(self, webcli_engine:"WebCLIEngine"):
-        assert self.require_shutdown is None
-        assert self.webcli_engine is None
-
-        self.require_shutdown = False
-        self.webcli_engine = webcli_engine
-
-    def shutdown(self):
-        # assert self.require_shutdown == False
-        # assert self.cli_handler is not None
-
-        # self.cli_handler = None
-        # self.require_shutdown = None
-        pass
-
-    @abstractmethod
-    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
-        # to complete the action, you can call
-        # cli_handler.complete_action(None, action_id, ...)
-        #
-        # to update the action, you can call
-        # cli_handler.update_action(None, action_id:int, ...):
-        pass # pragma: no cover
-
-    # An action handler can get other action handler by name
-    def get_action_handler(self, action_handler_name:str) -> Optional["ActionHandler"]:
-        return self.webcli_engine.action_handlers.get(action_handler_name)
 
 
 class UserManager:
@@ -235,7 +200,7 @@ class WebCLIEngine:
     event_loop: Optional[AbstractEventLoop]         # The current main loop
     lock: threading.Lock                            # a global lock
     require_shutdown: Optional[bool]                # True if shutdown has been requested
-    action_handlers: Dict[str, ActionHandler]       # action handlers map
+    action_handlers: Dict[str, action_handler.ActionHandler]       # action handlers map
 
     def __init__(
         self, 
@@ -243,7 +208,7 @@ class WebCLIEngine:
         users_home_dir:str,
         db_engine:Engine, 
         wsc_manager:WebSocketConnectionManager, 
-        action_handlers:Dict[str, ActionHandler]
+        action_handlers:Dict[str, action_handler.ActionHandler]
     ):
         log_prefix = "WebCLIEngine.__init__"
         log_api_enter(logger, log_prefix)
