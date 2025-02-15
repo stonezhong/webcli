@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from typing import Optional
 from datetime import datetime
 from sqlalchemy import Integer, Identity, String, DateTime, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ._common import DBModelBase
+from . import db_user
 
 #############################################################################
 # Represent a DB layer action
@@ -27,7 +30,7 @@ class DBAction(DBModelBase):
 
     # user who created this action
     user_id:  Mapped[int] = mapped_column(ForeignKey("users.id"))
-    user:     Mapped["DBUser"] = relationship(foreign_keys=[user_id])
+    user:     Mapped[db_user.DBUser] = relationship(foreign_keys=[user_id])
 
     # what is the name of the action handler that handles this action?
     handler_name: Mapped[str] = mapped_column("handler_name", String)

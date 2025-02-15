@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 from datetime import datetime
 from sqlalchemy import Integer, Identity, String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ._common import DBModelBase
+from . import db_user
 
 class DBThread(DBModelBase):
     """
@@ -15,7 +18,7 @@ class DBThread(DBModelBase):
 
     # user who created this action
     user_id:  Mapped[int] = mapped_column(ForeignKey("users.id"))
-    user:     Mapped["DBUser"] = relationship(foreign_keys=[user_id])
+    user:     Mapped[db_user.DBUser] = relationship(foreign_keys=[user_id])
 
     # when the thread is created
     created_at: Mapped[datetime] = mapped_column("created_at", DateTime)

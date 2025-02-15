@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from sqlalchemy import Integer, Identity, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ._common import DBModelBase
+from . import db_action
 
 class DBThreadAction(DBModelBase):
     """
@@ -13,7 +16,7 @@ class DBThreadAction(DBModelBase):
 
     thread_id:  Mapped[int] = mapped_column(ForeignKey("threads.id"))
     action_id:  Mapped[int] = mapped_column(ForeignKey("async-actions.id"))
-    action:     Mapped["DBAction"] = relationship(foreign_keys=[action_id])
+    action:     Mapped[db_action.DBAction] = relationship(foreign_keys=[action_id])
 
     # within the thread, the display order of this action
     display_order: Mapped[int] = mapped_column("display_order", Integer)
