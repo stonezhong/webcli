@@ -1,13 +1,12 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Any, Optional, Literal, List, Dict, TextIO, BinaryIO, Union
+from typing import Any, Optional, Literal, TextIO, BinaryIO, Union
 from pydantic import BaseModel, ValidationError
 import uuid
 import os
 import argparse
 import shlex
-import code
 import io
 import json
 
@@ -19,6 +18,7 @@ from webcli2.models import User
 from webcli2.webcli.main import run_code
 from webcli2.webcli.output import MIMEType, CLIOutput, CLIOutputChunk
 from webcli2.apilog import log_api_enter, log_api_exit
+from webcli2.ai_agent import AIAgent
 
 from openai import OpenAI
 
@@ -218,6 +218,9 @@ class OpenAIActionHandler(ActionHandler):
                 tools=tools
             )
             return completion
+        
+        def get_ai_agent() -> AIAgent:
+            return AIAgent(self)
 
         run_code(
             tc, 
@@ -227,7 +230,8 @@ class OpenAIActionHandler(ActionHandler):
                 "openai": openai,
                 "cli_open": cli_open,
                 "cli_print": cli_print,
-                "get_action_handler": self.get_action_handler
+                "get_action_handler": self.get_action_handler,
+                "get_ai_agent": get_ai_agent
             }, 
             extra_code + "\n" + openai_request.command_text
         )
