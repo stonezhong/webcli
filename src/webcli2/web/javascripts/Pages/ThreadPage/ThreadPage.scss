@@ -1,32 +1,43 @@
 .cli-page {
-	height: 100vh;
+	height: calc(100vh - 60px);
 	width: 100%;
+    overflow: hidden;
+
+    .actions-panel {
+        padding-bottom: 12px;
+
+        .action-question-wrapper {
+            background-color: white;
+            margin-bottom: 4px;
+
+            .question-raw-text {
+                border: 1px solid silver;
+                padding: 4px;
+            }
+            .answer-wrapper {
+                background-color: white;
+                margin-bottom: 4px;
+                border: 1px solid silver;
+                padding: 4px;
+            }           
+        }
+        
+    }
+
+    .question-panel {
+        height: 100%;
+
+        .question-panel--question {
+            font-family: monospace;
+            font-size: 14px;
+            height: 100%;
+        }        
+    }    
 }
 
-.answer-panel-row {
-	height: 100%;
-	// overflow: auto;
-    padding-bottom: 12px;
-}
 
-.answer-panel {
-    padding-bottom: 12px;
-}
 
-.question-panel {
-	height: 100%;
-}
-
-.question-panel--question {
-    font-family: monospace;
-    font-size: 14px;
-    height: 100%;
-}
-.spacebar {
-    height: 12px;
-}
-
-// component level style
+// For component EditableText
 .editable-text {
     td {
         border-width: 0;
@@ -60,30 +71,3 @@ tr.action-title-editor {
         width: 200px;
     }
 }
-
-.standard-icon {
-    width: 24px;
-    height: 24px;
-}
-
-.clickable-icon {
-    cursor: pointer;
-}
-
-.question-wrapper {
-    background-color: white;
-    margin-bottom: 4px;
-}
-
-.answer-wrapper {
-    background-color: white;
-    margin-bottom: 4px;
-    border: 1px solid silver;
-    padding: 4px;
-}
-
-.question-raw-text {
-    border: 1px solid silver;
-    padding: 4px;
-}
-

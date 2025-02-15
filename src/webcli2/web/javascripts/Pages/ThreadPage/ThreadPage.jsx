@@ -11,6 +11,7 @@ import Alert from 'react-bootstrap/Alert';
 import pino from 'pino';
 import { MdModeEdit, MdDelete } from "react-icons/md";
 import { setStateAsync } from "@/tools.js";
+import { PageHeader } from "@/Components/PageHeader";
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
@@ -25,6 +26,36 @@ import {
 import '@/global.scss';
 import './ThreadPage.scss';
 
+/****************************************
+ Page Layout
+
+ div
+    PageHeader
+    div class="cli-page"
+        SplitViewHorizontal
+            Container (the container to display questions & answers)
+                Row
+                    Col
+                        array of Alert (for showing error message)
+                Row
+                    Col
+                        table
+                            tr for thread title using <EditableText>
+                            tr for thread description using <EditableText>
+                <hr />
+
+                Row
+                    Col
+                        div class="actions-panel"
+                            array of divs, 
+                                table
+                                    tr for question title
+                                div class="questio-wrapper"
+                                div class="answer-wrapper"
+                                
+
+            Container (the container for user input text)
+ */
 const logger = pino({
     level: 'debug',
     transport: {
@@ -304,7 +335,7 @@ export class ThreadPage extends React.Component {
         const threadAction = threadActionWrapper.threadAction;
         const action = threadAction.action;
         const actionHandler = this.props.actionHandlerMap.get(action.handler_name);
-        return <div>
+        return <div key={threadActionWrapper.threadAction.id}>
             <table style={{width: "100%"}} className="question-table">
                 <tbody>
                     <EditableText
@@ -351,10 +382,10 @@ export class ThreadPage extends React.Component {
             </table>
             
             {
-                (threadAction.show_question)?<div className="question-wrapper"><pre className="question-raw-text">{action.raw_text}</pre></div>:null
+                (threadAction.show_question)?<div className="action-question-wrapper"><pre className="question-raw-text">{action.raw_text}</pre></div>:null
             }
             {
-                (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():<div className="answer-wrapper">{actionHandler.renderAction(action)}</div>):null
+                (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():<div className="action-answer-wrapper">{actionHandler.renderAction(action)}</div>):null
             }
             
         </div>;
@@ -521,108 +552,107 @@ export class ThreadPage extends React.Component {
 
     render() {
         return (
-            <div className='cli-page'>
-                <SplitViewHorizontal>
-                    <Container fluid className='h-100'>
-                        <Row>
-                            <Col>
-                            {this.state.alerts.map(
-                                alert => 
-                                <Alert 
-                                    key={alert.id} 
-                                    variant="danger"
-                                    dismissible
-                                    onClose={async () => await this.removeAlert(alert)} 
-                                >
-                                    {alert.message}
-                                </Alert>
-                            )}
-                            </Col>
-                        </Row>
+            <div>
+                <PageHeader />
+                <div className='cli-page'>
+                    <SplitViewHorizontal>
+                        <Container fluid className='h-100'>
+                            <Row>
+                                <Col>
+                                {this.state.alerts.map(
+                                    alert => 
+                                    <Alert 
+                                        key={alert.id} 
+                                        variant="danger"
+                                        dismissible
+                                        onClose={async () => await this.removeAlert(alert)} 
+                                    >
+                                        {alert.message}
+                                    </Alert>
+                                )}
+                                </Col>
+                            </Row>
 
-                        <Row>
-                            <Col>
-                                <table style={{width: "100%"}}>
-                                    <tbody>
-                                        <EditableText
-                                            className="thread-title-editor"
-                                            multiLine={false}
-                                            text={this.state.thread_title}
-                                            onError = {
-                                                async err => await this.addAlert(`Cannot change thread title, error: ${err.message}`)
-                                            }
-                                            onSave = {async newText => {
-                                                await update_thread_title({
-                                                    thread_id:this.props.threadId,
-                                                    title: newText
-                                                });
-                                                await setStateAsync(this, {
-                                                    thread_title:newText
-                                                });
-                                            }}
-                                        />
-                                        <EditableText
-                                            className="description-editor"
-                                            multiLine={true}
-                                            text={this.state.thread_description}
-                                            onError = {
-                                                async err => await this.addAlert(`Cannot change thread description, error: ${err.message}`)
-                                            }
-                                            onSave = {async newText => {
-                                                await update_thread_description({
-                                                    thread_id:this.props.threadId,
-                                                    description: newText
-                                                });
-                                                await setStateAsync(this, {
-                                                    thread_description:newText
-                                                });
-                                            }}
-                                        />
-                                    </tbody>
-                                </table>
-                            </Col>
-                        </Row>
+                            <Row>
+                                <Col>
+                                    <table style={{width: "100%"}}>
+                                        <tbody>
+                                            <EditableText
+                                                className="thread-title-editor"
+                                                multiLine={false}
+                                                text={this.state.thread_title}
+                                                onError = {
+                                                    async err => await this.addAlert(`Cannot change thread title, error: ${err.message}`)
+                                                }
+                                                onSave = {async newText => {
+                                                    await update_thread_title({
+                                                        thread_id:this.props.threadId,
+                                                        title: newText
+                                                    });
+                                                    await setStateAsync(this, {
+                                                        thread_title:newText
+                                                    });
+                                                }}
+                                            />
+                                            <EditableText
+                                                className="description-editor"
+                                                multiLine={true}
+                                                text={this.state.thread_description}
+                                                onError = {
+                                                    async err => await this.addAlert(`Cannot change thread description, error: ${err.message}`)
+                                                }
+                                                onSave = {async newText => {
+                                                    await update_thread_description({
+                                                        thread_id:this.props.threadId,
+                                                        description: newText
+                                                    });
+                                                    await setStateAsync(this, {
+                                                        thread_description:newText
+                                                    });
+                                                }}
+                                            />
+                                        </tbody>
+                                    </table>
+                                </Col>
+                            </Row>
 
-                        <hr style={{margin:"6px"}} />
+                            <hr className="thin-spacebar" />
 
-                        <Row className="answer-panel-row">
-                            <Col>
-                                <div className="answer-panel">
-                                {
-                                    this.state.threadActionWrappers.map(threadActionWrapper => {
-                                        return <div key={threadActionWrapper.threadAction.id}>
-                                            {this.renderAction(threadActionWrapper)}
-                                        </div>
-                                    })
-                                }
-                                </div>
-                            </Col>
-                        </Row>
-                    </Container>
-                    <Container fluid className="question-panel">
-                        <Row className="h-100 pt-2 pb-2">
-                            <Col>
-                                <Form.Control as="textarea" rows={6} 
-                                    className='question-panel--question'
-                                    value={this.state.command}
-                                    onChange={async (event) => {
-                                        await setStateAsync(this, {
-                                            command: event.target.value
-                                        });
-                                    }}
-                                    placeholder='Please input your command'
-                                />
-                            </Col>
-                            <Col xs={1}>
-                                <Button 
-                                    variant="primary"
-                                    size="sm"
-                                    onClick={this.sendAction}
-                                >Submit</Button>
-                            </Col>
-                        </Row>
-                    </Container>
-                </SplitViewHorizontal>
+                            <Row>
+                                <Col>
+                                    <div className="actions-panel">
+                                    {
+                                        this.state.threadActionWrappers.map(threadActionWrapper => this.renderAction(threadActionWrapper))
+                                    }
+                                    </div>
+                                </Col>
+                            </Row>
+                        </Container>
+                        <Container fluid className="question-panel">
+                            <Row className="h-100 pt-2 pb-2">
+                                <Col>
+                                    <Form.Control as="textarea" rows={6} 
+                                        className='question-panel--question'
+                                        value={this.state.command}
+                                        onChange={async (event) => {
+                                            await setStateAsync(this, {
+                                                command: event.target.value
+                                            });
+                                        }}
+                                        placeholder='Please input your command'
+                                    />
+                                </Col>
+                                <Col xs={1}>
+                                    <Button 
+                                        variant="primary"
+                                        size="sm"
+                                        onClick={this.sendAction}
+                                    >Submit</Button>
+                                </Col>
+                            </Row>
+                        </Container>
+                    </SplitViewHorizontal>
+                </div>
             </div>
         );
     }

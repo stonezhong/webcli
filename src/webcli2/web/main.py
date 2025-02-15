@@ -153,7 +153,7 @@ async def thread_page(request: Request, thread_id:int, user:Union[User, HTMLResp
         "thread_page.html", 
         {
             "request": request, 
-            "title": "Web CLI Demo",
+            "title": f"Thread {thread_id}",
             "thread_id": thread_id,
             "client_id": client_id,
             "websocket_uri": config.core.websocket_uri,
@@ -219,6 +219,12 @@ async def do_login(
         samesite="strict",      # optional: 'strict' | 'lax' | 'none'
     )
         
+    return response
+
+@app.post("/logout", response_class=HTMLResponse, include_in_schema=False)
+async def do_logout():
+    response = redirect("/login")
+    response.delete_cookie(key="access-token")
     return response
 
 ##########################################################

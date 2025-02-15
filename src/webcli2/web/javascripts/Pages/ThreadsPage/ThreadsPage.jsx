@@ -6,6 +6,7 @@ import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
 import { list_threads, create_thread, delete_thread } from "@/apis";
 import Button from 'react-bootstrap/Button';
+import { PageHeader } from "@/Components/PageHeader";
 
 import '@/global.scss';
 import './ThreadsPage.scss';
@@ -71,19 +72,22 @@ export class ThreadsPage extends React.Component {
 
     render() {
         return (
-            <Container fluid >
-                <Row>
-                    <Col>
-                        <h1>Threads</h1>
-                    </Col>
-                </Row>
-                <Row>
-                    {
-                        this.state.threads.map(thread => this.render_thread(thread))
-                    }
-                    { this.render_add_thread() }
-                </Row>
-            </Container>
+            <div>
+                <PageHeader />
+                <Container fluid >
+                    <Row>
+                        <Col>
+                            <h1>Threads</h1>
+                        </Col>
+                    </Row>
+                    <Row>
+                        {
+                            this.state.threads.map(thread => this.render_thread(thread))
+                        }
+                        { this.render_add_thread() }
+                    </Row>
+                </Container>
+            </div>
         );
     }
 }
