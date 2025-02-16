@@ -33,7 +33,6 @@ from webcli2.apilog import log_api_enter, log_api_exit
 from webcli2.webcli.output import CLIOutput
 import webcli2.action_handlers.action_handler as action_handler
 
-from abc import ABC, abstractmethod
 
 class TheradContext:
     user:User
