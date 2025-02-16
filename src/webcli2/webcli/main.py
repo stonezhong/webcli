@@ -4,13 +4,13 @@ import threading
 import code
 from contextlib import redirect_stdout, redirect_stderr
 from webcli2.models import User
-from .output import CLIOutput, MIMEType, CLIOutputChunk
+from .output import CLIOutputChunk
 from webcli2.webcli_engine import TheradContext
 
 GLOBAL_II_DICT: Dict[int, code.InteractiveInterpreter] = {}
 GLOBAL_II_DICT_LOCK = threading.Lock()
 
-def run_code(tc:TheradContext, user:User, client_id:str, locals:dict, source_code) -> CLIOutput:
+def run_code(tc:TheradContext, user:User, client_id:str, locals:dict, source_code):
     my_locals = locals.copy()
 
     safe_user = User(id=user.id, is_active=user.is_active, email=user.email, password_version=1, password_hash="***")
@@ -36,7 +36,7 @@ def run_code(tc:TheradContext, user:User, client_id:str, locals:dict, source_cod
         tc.stdout.chunks.append(
             CLIOutputChunk(
                 name = "stdout",
-                mime = MIMEType.TEXT,
+                mime = "text/plain",
                 content=f.getvalue()
             )
         )

@@ -12,19 +12,17 @@ class Thread(CoreModelBase):
     title: str
     description: str
 
-    thread_actions: Optional[List[ThreadAction]]
+    thread_actions: List[ThreadAction]
 
     @classmethod
-    def create(self, db_thread:DBThread, db_thread_actions:Optional[List[DBThreadAction]]=None) -> "Thread":
+    def create(self, db_thread:DBThread, db_thread_actions:List[DBThreadAction]=[]) -> "Thread":
         return Thread(
             id = db_thread.id,
             user_id = db_thread.user_id,
             created_at = db_thread.created_at,
             title = db_thread.title,
             description = db_thread.description,
-            thread_actions = None if db_thread_actions is None else [
+            thread_actions = [
                 ThreadAction.create(db_thread_action) for db_thread_action in db_thread_actions
             ]
         )
-
-

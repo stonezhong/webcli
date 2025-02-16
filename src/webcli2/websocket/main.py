@@ -3,28 +3,106 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Optional, Tuple, Dict
+from typing import Optional, Dict, List
+import enum
 import json
 import asyncio
 import time
 from pydantic import BaseModel
 from fastapi import WebSocket, WebSocketDisconnect
 from webcli2.apilog import log_api_enter, log_api_exit
+from webcli2.webcli.output import CLIOutputChunk
+from webcli2.exceptions import WebCLIException
 
 WEB_SOCKET_PING_INTERVAL = 20  # in seconds
 
-class ClientInfo:
-    queue: asyncio.Queue[Tuple[int, BaseModel]]
-    websocket: WebSocket
+################################################
+# Define notification exceptions
+################################################
+class NotificationError(WebCLIException):
+    pass
 
-    def __init__(self, client_id:str, websocket:WebSocket):
+class TopicAlreadyExist(NotificationError):
+    topic_name:str
+
+    def __init__(self, *args, topic_name:str):
+        super().__init__(*args)
+        self.topic_name = topic_name
+
+class TopicNotFound(NotificationError):
+    topic_name:str
+
+    def __init__(self, *args, topic_name:str):
+        super().__init__(*args)
+        self.topic_name = topic_name
+
+class TopicAlreadySubscribed(NotificationError):
+    topic_name:str
+    client_id:str
+
+    def __init__(self, *args, topic_name:str, client_id:str):
+        super().__init__(*args)
+        self.topic_name = topic_name
+        self.client_id = client_id
+
+class TopicNotYetSubscribed(NotificationError):
+    topic_name:str
+    client_id:str
+
+    def __init__(self, *args, topic_name:str, client_id:str):
+        super().__init__(*args)
+        self.topic_name = topic_name
+        self.client_id = client_id
+
+################################################
+# Define various notification types
+################################################
+class NotificationType(enum.Enum):
+    THREAD_STATUS_CHANGED   = "thread_status_changed"   # thread's title, description changed, thread's action order changed
+    ACTION_STATUS_CHANGED   = "action_status_changed"   # an action's title, description, is_completed is changed
+    NEW_ACTION_RESPONSE     = "new-action-response"     # an action got new response
+
+class Notification(BaseModel):
+    pass
+
+class ActionOrderInfo(BaseModel):
+    action_id: int
+    display_order: int
+
+class ActionStatusChanged(Notification):
+    type: NotificationType = NotificationType.ACTION_STATUS_CHANGED
+    action_id:int
+    action_title:Optional[str] = None
+    action_description:Optional[str] = None
+    action_is_completed:Optional[bool] = None
+
+class ThreadStatusChanged(Notification):
+    type: NotificationType = NotificationType.THREAD_STATUS_CHANGED
+    thread_id:int
+    thread_title:str
+    thread_description:str
+    thread_action_orders: List[ActionOrderInfo]
+
+class NewActionResponse(Notification):
+    type: NotificationType = NotificationType.NEW_ACTION_RESPONSE
+    action_id:int
+    response_id:int
+    chunk:CLIOutputChunk
+
+################################################
+# Define Subscriber and Topic class
+################################################
+class Subscriber:
+    client_id: str
+    queue: asyncio.Queue[Notification]
+
+    def __init__(self, client_id:str):
         self.client_id = client_id
         self.queue = asyncio.Queue()
-        self.websocket = websocket
-    
-    async def pop_notification(self, timeout:float) -> Optional[Tuple[int, BaseModel]]:
-        log_prefix = "ClientManager.pop_notification"
-        log_api_enter(logger, log_prefix)
+
+    async def pop_notification(self, timeout:float) -> Optional[Notification]:
+        log_prefix = "Subscriber.pop_notification"
+        # log_api_enter(logger, log_prefix)
 
         try:
             # logger.debug(f"{log_prefix}: wait for notification, client_id={self.client_id}")
@@ -33,32 +111,68 @@ class ClientInfo:
         except asyncio.TimeoutError:
             r = None
             # logger.debug(f"{log_prefix}: no notification for {self.client_id}")
-        log_api_exit(logger, log_prefix)
+        # log_api_exit(logger, log_prefix)
         return r
 
-class WebSocketConnectionManager:
-    client_info_dict: Dict[str, ClientInfo]   # key is client_id
+class Topic:
+    subscribers: Dict[str, Subscriber]
+    lock: asyncio.Lock
+
+    def __init__(self):
+        self.subscribers = {}
+        self.lock = asyncio.Lock()
+
+################################################
+# NotificationManager
+################################################
+class NotificationManager:
+    topic_dict: Dict[str, Topic]
     lock: asyncio.Lock
 
     def __init__(self):
         self.lock = asyncio.Lock()
-        self.client_info_dict = {}
-    
-    #######################################################################
-    # Notify client via web socket that an action is completed
-    #######################################################################
-    async def publish_notification(self, client_id:str, action_id:int, response:BaseModel):
-        log_prefix = "WebSocketConnectionManager.publish_notification"
-        log_api_enter(logger, log_prefix)
-        async with self.lock:
-            client_info = self.client_info_dict.get(client_id)
-            if client_info is None:
-                logger.error(f"{log_prefix}: unable to publish notification, client_id={client_id}, action_id={action_id}, reason: invalid client_id")
-            else:
-                await client_info.queue.put((action_id, response))
-                logger.debug(f"{log_prefix}: notification published to client, client_id={client_id}, action_id={action_id}")
-        log_api_exit(logger, log_prefix)
+        self.topic_dict = {}
 
+    ################################################################################################
+    # subscribe a topic, if topic does not exist, create one
+    ################################################################################################
+    async def subscribe_topic(self, topic_name:str, subscriber:Subscriber):
+        log_prefix = "NotificationManager.subscribe_topic"
+        async with self.lock:
+            if topic_name in self.topic_dict:
+                topic = self.topic_dict[topic_name]
+            else:
+                topic = Topic()
+                self.topic_dict[topic_name] = topic
+                logger.info(f"{log_prefix}: topic({topic_name}) is created!")
+            if subscriber.client_id in topic.subscribers:
+                raise TopicAlreadySubscribed(topic_name=topic_name, client_id=subscriber.client_id)
+            topic.subscribers[subscriber.client_id] = subscriber
+            logger.info(f"{log_prefix}: topic({topic_name}) is subscribed by {subscriber.client_id}")
+
+    async def unsubscribe_topic(self, topic_name:str, subscriber:Subscriber):
+        async with self.lock:
+            topic = self.topic_dict.get(topic_name)
+            if topic is None:
+                raise TopicNotFound(topic_name=topic_name)
+            if subscriber.client_id not in topic.subscribers:
+                raise TopicNotYetSubscribed(topic_name=topic_name, client_id=subscriber.client_id)
+            topic.subscribers.pop(subscriber.client_id)
+
+    async def publish_notification(self, topic_name:str, notification:Notification):
+        log_prefix = "NotificationManager.publish_notification"
+        for topic_name, topic in self.topic_dict.items():
+            logger.info(topic.subscribers)
+
+        async with self.lock:
+            topic = self.topic_dict.get(topic_name)
+            if topic is None:
+                raise TopicNotFound(topic_name=topic_name)
+
+        async with topic.lock:
+            for _, subscriber in topic.subscribers.items():
+                logger.info(f"{log_prefix}: topic_name={topic_name}, client_id={subscriber.client_id}")
+                await subscriber.queue.put(notification)
 
     #######################################################################
     # This is called by web socket endpoint from fastapi
@@ -70,42 +184,43 @@ class WebSocketConnectionManager:
     #
     #######################################################################
     async def websocket_endpoint(self, websocket: WebSocket):
-        log_prefix = "WebSocketConnectionManager.websocket_endpoint"
-        log_api_enter(logger, log_prefix)
+        #######################################################################
+        # Upon connection, client should send us a JSON object which contains
+        # client_id and thread_id
+        #######################################################################
+        log_prefix = "websocket_endpoint"
+
         await websocket.accept()
         # client need to report it's client ID in the first place
-        data = await websocket.receive_text()
-        client_id = None
+        data = await websocket.receive_text() # TODO: need to specify a timeout for receive_text
+        logger.debug(f"{log_prefix}: receive {data}")
+        client_id:Optional[str] = None
+        thread_id:Optional[int] = None
         try:
             json_data = json.loads(data)
             if isinstance(json_data, dict):
                 client_id = json_data.get("client_id")
                 if not isinstance(client_id, str):
                     client_id = None
+                thread_id = json_data.get("thread_id")
+                if not isinstance(thread_id, int):
+                    thread_id = None
         except json.decoder.JSONDecodeError:
             pass
 
-        # TODO: improve, do not hold global lock
-        async with self.lock:
-            if client_id is None:
-                logger.debug(f"{log_prefix}: client did not report client id, closing web socket")
-                await websocket.close(code=1000, reason="Client ID not provided")
-                log_api_exit(logger, log_prefix)
-                return
+        if client_id is None or thread_id is None:
+            logger.debug(f"{log_prefix}: client_id={client_id}, thread_id={thread_id}, missing client_id or thread_id from client")
+            await websocket.close(code=1000, reason="Client ID or Thread ID not provided")
+            return
 
-            ##########################################################################################
-            # TODO
-            # A client may get disconnected, and click "Connect" button from Web UI without
-            # refreshing the browser and remain using the same client ID
-            # We also need to prevent client from cheating us with a fake client_id and try to 
-            # recevie notification for other client
-            ##########################################################################################
-            if client_id not in self.client_info_dict:
-                self.client_info_dict[client_id] = ClientInfo(client_id, websocket)
-            client_info = self.client_info_dict[client_id]
-            logger.info(f"{log_prefix}: client({client_id}) is connected to websocket")
+        subscriber = Subscriber(client_id)
+        topic_name = f"thread-{thread_id}"
+        await self.subscribe_topic(topic_name, subscriber)
             
         try:
+            #######################################################################
+            # ping client periodically to make sure client is still connected
+            #######################################################################
             last_ping_time:float = None
             while True:
                 # need to ping client if needed
@@ -114,25 +229,16 @@ class WebSocketConnectionManager:
                     last_ping_time = now
                     await websocket.send_text("ping")
 
-                r = await client_info.pop_notification(10)
-                if r is None:
+                notification = await subscriber.pop_notification(10)
+                if notification is None:
                     # no notification
                     continue
 
-                action_id, response_model = r
-                logger.debug(f"{log_prefix}: got notification, client_id={client_id}, action_id={action_id}")
-                to_notify = {
-                    "action_id": action_id,
-                    "response": response_model.model_dump(mode="json")
-                }
-                await websocket.send_text(json.dumps(to_notify))
-                logger.debug(f"{log_prefix}: notification passed to websocket, client_id={client_id}, action_id={action_id}")
+                logger.debug(f"{log_prefix}: got notification, client_id={client_id}, thread_id={thread_id}")
+                payload = notification.model_dump(mode="json")
+                await websocket.send_text(json.dumps(payload))
+                logger.debug(f"{log_prefix}: notification passed to websocket, client_id={client_id}, thread_id={thread_id}")
         except WebSocketDisconnect:
-            async with self.lock:
-                if client_id in self.client_info_dict:
-                    logger.debug(f"{log_prefix}: client({client_id}), websocket is disconnected and removed")
-                    self.client_info_dict.pop(client_id)
-                else:
-                    # How come we cannot find this client_id from client_info_dict?
-                    logger.error(f"{log_prefix}: client({client_id}), websocket is disconnected, we cannot find client_id, please investiage!")
-        log_api_exit(logger, log_prefix)
+            self.unsubscribe_topic(topic_name, subscriber)
+            logger.debug(f"{log_prefix}: client_id={client_id}, thread_id={thread_id}, unsubscribed")
+            

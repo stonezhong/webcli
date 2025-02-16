@@ -57,9 +57,3 @@ class DBAction(DBModelBase):
     # the user input text
     raw_text: Mapped[str] = mapped_column("raw_text", String)
 
-    # response context
-    response: Mapped[Optional[JSON]] = mapped_column("response", JSON)
-
-    # progresse context
-    progress: Mapped[Optional[JSON]] = mapped_column("progress", JSON)
-

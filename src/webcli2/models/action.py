@@ -1,8 +1,9 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 from ._common import CoreModelBase
-from webcli2.db_models import DBAction
+from webcli2.db_models import DBAction, DBActionResponseChunk
+from .action_response_chunk import ActionResponseChunk
 
 #############################################################################
 # Represent an action
@@ -19,11 +20,11 @@ class Action(CoreModelBase):
     request: dict
     title: str
     raw_text: str
-    response: Optional[dict]
-    progress: Optional[dict]
+
+    response_chunks: List[ActionResponseChunk]
 
     @classmethod
-    def create(self, db_async_action:DBAction) -> "Action":
+    def create(self, db_async_action:DBAction, db_response_chunks:List[DBActionResponseChunk]=[]) -> "Action":
         return Action(
             id = db_async_action.id,
             handler_name=db_async_action.handler_name,
@@ -34,7 +35,7 @@ class Action(CoreModelBase):
             request = db_async_action.request,
             title = db_async_action.title,
             raw_text = db_async_action.raw_text,
-            response = db_async_action.response,
-            progress = db_async_action.progress
+            response_chunks = [
+                ActionResponseChunk.create(db_response_chunk) for db_response_chunk in db_response_chunks
+            ]
         )
-

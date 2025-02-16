@@ -15,10 +15,12 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine
 from contextlib import asynccontextmanager
 
-from webcli2 import WebCLIEngine, WebCLIEngineStatus, WebSocketConnectionManager, UserManager
+
+from webcli2 import WebCLIEngine, WebCLIEngineStatus, UserManager
 from webcli2.models import Thread, User, Action, ThreadAction
 from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, \
     PatchThreadActionRequest, PatchThreadRequest
+from webcli2.websocket  import NotificationManager
 from fastapi import WebSocket
 
 from webcli2.config import load_config, ActionHandlerInfo
@@ -61,10 +63,11 @@ config_action_handlers()
 ##########################################################
 engine = create_engine(config.core.db_url)
 
+notification_manager = NotificationManager()
 webcli_engine = WebCLIEngine(
     users_home_dir = config.core.users_home_dir,
     db_engine = engine,
-    wsc_manager=WebSocketConnectionManager(),
+    notification_manager = notification_manager,
     action_handlers = action_handlers
 )
 user_manager = UserManager(
@@ -136,7 +139,7 @@ templates = Jinja2Templates(directory=os.path.join(WEB_DIR, "dist", "templates")
 ##########################################################
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await webcli_engine.wsc_manager.websocket_endpoint(websocket)
+    await notification_manager.websocket_endpoint(websocket)
 
 ##########################################################
 # Endpoint for homepage

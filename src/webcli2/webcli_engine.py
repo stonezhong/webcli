@@ -3,7 +3,7 @@ from __future__ import annotations  # Enables forward declaration
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Dict, Tuple, Any, List, Optional
+from typing import Dict, Tuple, Any, List, Optional, Union
 from datetime import datetime, timezone
 from asyncio import Event, get_event_loop, AbstractEventLoop
 import enum
@@ -24,27 +24,46 @@ from sqlalchemy import Engine, select, delete
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import func
 
-from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser, DBThread, DBThreadAction
-from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload, Thread, ThreadAction
+from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser, DBThread, DBThreadAction, DBActionResponseChunk
+from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload, Thread, ThreadAction, ActionResponseChunk
 from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, \
     PatchThreadActionRequest, PatchThreadRequest
-from webcli2.websocket import WebSocketConnectionManager
 from webcli2.apilog import log_api_enter, log_api_exit
-from webcli2.webcli.output import CLIOutput
 import webcli2.action_handlers.action_handler as action_handler
+from webcli2.webcli.output import CLIOutputChunk, MIMEType
+from webcli2.websocket import NewActionResponse, TopicNotFound, NotificationManager, ActionStatusChanged
+from webcli2.exceptions import WebCLIException
+
+#############################################################
+# WebCLIEngine related exceptions
+#############################################################
+class EngineException(WebCLIException):
+    pass
+
+class ActionAlreadyCompleted(EngineException):
+    action_id:int
+
+    def __init__(self, *args, action_id:int):
+        super().__init__(*args)
+        self.action_id = action_id
+
+class ActionNotFound(EngineException):
+    action_id:int
+
+    def __init__(self, *args, action_id:int):
+        super().__init__(*args)
+        self.action_id = action_id
 
 
 class TheradContext:
     user:User
     client_id:Optional[str]
     action_id:int
-    stdout: CLIOutput
 
     def __init__(self, user:User, action_id:int):
         self.user = user
         self.client_id = None
         self.action_id = action_id
-        self.stdout = CLIOutput(chunks=[])
 
 thread_context_var = ContextVar("thread_context", default=None)
 
@@ -194,7 +213,7 @@ class UserManager:
 class WebCLIEngine:
     users_home_dir: str                             # The parent directory for all user's home dir
     db_engine: Engine                               # SQLAlchemy engine
-    wsc_manager: WebSocketConnectionManager         # Web Socket Connection Manager
+    notification_manager:NotificationManager        # The notification manager for websocket
     executor: Optional[ThreadPoolExecutor]          # A thread pool
     event_loop: Optional[AbstractEventLoop]         # The current main loop
     lock: threading.Lock                            # a global lock
@@ -206,14 +225,14 @@ class WebCLIEngine:
         *, 
         users_home_dir:str,
         db_engine:Engine, 
-        wsc_manager:WebSocketConnectionManager, 
+        notification_manager:NotificationManager,
         action_handlers:Dict[str, action_handler.ActionHandler]
     ):
         log_prefix = "WebCLIEngine.__init__"
         log_api_enter(logger, log_prefix)
         self.users_home_dir = users_home_dir
         self.db_engine = db_engine
-        self.wsc_manager = wsc_manager
+        self.notification_manager = notification_manager
         self.executor = None
         self.event_loop = None
         self.lock = threading.Lock()
@@ -295,17 +314,43 @@ class WebCLIEngine:
         with Session(self.db_engine) as session:
             with session.begin():
                 db_thread = session.get(DBThread, thread_id)
-                db_thread_actions = session.scalars(
+                if db_thread is None:
+                    return None
+
+                thread_actions = []                
+                for db_thread_action in session.scalars(
                     select(DBThreadAction)\
                         .join(DBThreadAction.action)\
                         .where(DBThreadAction.thread_id == thread_id)\
                         .order_by(DBThreadAction.display_order)
+                ):
+                    action = Action.create(
+                        db_thread_action.action,
+                        db_response_chunks = session.scalars(
+                        select(DBActionResponseChunk)\
+                            .where(DBActionResponseChunk.action_id == db_thread_action.action_id)\
+                            .order_by(DBActionResponseChunk.order)
+                        )
+                    )
+                    thread_action = ThreadAction(
+                        id = db_thread_action.id,
+                        thread_id = db_thread_action.thread_id,
+                        action_id = db_thread_action.action_id,
+                        action = action,
+                        display_order = db_thread_action.display_order,
+                        show_question = db_thread_action.show_question,
+                        show_answer = db_thread_action.show_answer
+                    )
+                    thread_actions.append(thread_action)
+
+                thread = Thread(
+                    id = db_thread.id,
+                    user_id = db_thread.user_id,
+                    created_at = db_thread.created_at,
+                    title = db_thread.title,
+                    description = db_thread.description,
+                    thread_actions = thread_actions
                 )
-            
-            if db_thread is None:
-                thread = None
-            else:
-                thread = Thread.create(db_thread, db_thread_actions=db_thread_actions)
         return thread
 
     async def patch_thread(self, thread_id:int, request_data:PatchThreadRequest) -> Optional[Thread]:
@@ -380,12 +425,121 @@ class WebCLIEngine:
                     session.add(db_thread_action)
             return ThreadAction.create(db_thread_action)
 
+    def add_response_chunk(
+        self, action_id:int, 
+        mime:MIMEType, 
+        content:Union[str, bytes],
+        complete_action:bool=False
+    ) -> ActionResponseChunk:
+        log_prefix = "WebCLIEngine:add_response_chunk"
+
+
+        with Session(self.db_engine) as session:
+            with session.begin():
+
+                db_action = session.get(DBAction, action_id)
+                if db_action is None:
+                    raise ActionNotFound(action_id)
+
+                if db_action.is_completed:
+                    # you cannot add response to an action that is already completed
+                    raise ActionAlreadyCompleted(action_id)
+
+                max_order = session.scalars(
+                    select(
+                        func.max(DBActionResponseChunk.order)
+                    ).where(DBActionResponseChunk.action_id == action_id)
+                ).one()
+                if max_order is None:
+                    next_order = 1
+                else:
+                    next_order = max_order + 1
+
+                db_action_response_chunk = DBActionResponseChunk(
+                    action_id = action_id,
+                    order = next_order,
+                    mime = mime,
+                    text_content = content if isinstance(content, str) else None,
+                    binary_content = content if isinstance(content, bytes) else None,
+                )
+                session.add(db_action_response_chunk)
+
+                if complete_action:
+                    db_action.is_completed = True
+                    session.add(db_action_response_chunk)
+
+            
+            logger.info(f"{log_prefix}: added response chunk {db_action_response_chunk.id} to action(action_id={action_id})")
+            if complete_action:
+                logger.info(f"{log_prefix}: action(action_id={action_id}) is completed")
+
+            response_chunk = ActionResponseChunk.create(db_action_response_chunk)
+            asyncio.run_coroutine_threadsafe(
+                self.notify_action_new_response(
+                    action_id,
+                    response_chunk,
+                    complete_action
+                ),
+                self.event_loop
+            )
+            return response_chunk
+
+    async def notify_action_new_response(
+        self, 
+        action_id:int, 
+        response_chunk:ActionResponseChunk,
+        complete_action:bool=False
+    ):
+        #######################################################################
+        # An action just got new response
+        # Notify anyone who subscribed the thread that include this action
+        #######################################################################
+        log_prefix = "WebCLIEngine:notify_action_new_response"
+        try:
+            with Session(self.db_engine) as session:
+                for db_thread_action in session.scalars(
+                    select(DBThreadAction)\
+                        .where(DBThreadAction.action_id == action_id)
+                ):
+                    try:
+                        topic_name = f"thread-{db_thread_action.thread_id}"
+                        await self.notification_manager.publish_notification(
+                            topic_name,
+                            NewActionResponse(
+                                action_id=action_id, 
+                                response_id=response_chunk.id,
+                                chunk=CLIOutputChunk(
+                                    mime=response_chunk.mime,
+                                    content=response_chunk.text_content
+                                )
+                            )
+                        )
+                        if complete_action:
+                            await self.notification_manager.publish_notification(
+                                topic_name,
+                                ActionStatusChanged(
+                                    action_id=action_id,
+                                    action_is_completed=True
+                                )
+                            )
+                        logger.info(f"{log_prefix}: action({action_id}) got a new response({response_chunk.id}), complete_action={complete_action}, topic({topic_name}) is notified")
+                    except TopicNotFound:
+                        logger.info(f"{log_prefix}: action({action_id}) got a new response({response_chunk.id}), complete_action={complete_action}, topic({topic_name}) is not notified")
+        except Exception:
+            logger.exception(f"{log_prefix}: unhandled exception")
+            raise
+
 
     #######################################################################
     # Called by async function so they can submit a job to the thread pool
     #######################################################################
     async def _async_call(self, method:Any, *args, **kwargs) -> Any:
+        for i in args:
+            print(f"!1: {type(i)} --> {i}")
+        print(f"!2: {kwargs}")
+        print(f"method={method}")
         v = AsyncCall(event_loop=self.event_loop)
+        print(f"3: {v}")
         self.executor.submit(method, *args, async_call=v, **kwargs)
         # the method is responsible to finish the async call, optionally with return_value
         return await v.async_await_return()
@@ -408,11 +562,11 @@ class WebCLIEngine:
         log_api_exit(logger, log_prefix)
         return r
 
-    async def async_complete_action(self, action_id:int, response:Any) -> WebCLIEngineStatus:
+    async def async_complete_action(self, action_id:int) -> WebCLIEngineStatus:
         log_prefix = "WebCLIEngine:async_complete_action"
         log_api_enter(logger, log_prefix)
         logger.debug(f"{log_prefix}: action_id={action_id}")
-        r = await self._async_call(self.complete_action, action_id, response)
+        r = await self._async_call(self.complete_action, action_id)
         log_api_exit(logger, log_prefix)
         return r
 
@@ -485,8 +639,6 @@ class WebCLIEngine:
                         request = request.request,
                         title = request.title,
                         raw_text = request.raw_text,
-                        response = None,
-                        progress = None
                     )
                     session.add(db_action)
                     db_thread_action = DBThreadAction(
@@ -605,9 +757,9 @@ class WebCLIEngine:
     def _complete_action_unsafe(
         self, 
         action_id:int, 
-        response:Any, 
         async_call:Optional[AsyncCall]=None
     ) -> WebCLIEngineStatus:
+        print(f"1: {async_call}")
         #############################################################
         # Complete an action's progress
         #############################################################
@@ -636,7 +788,6 @@ class WebCLIEngine:
 
                     db_action.is_completed = True
                     db_action.completed_at = get_utc_now()
-                    db_action.response = response
                     session.add(db_action)
                 action = Action.create(db_action)
         except SQLAlchemyError:
@@ -651,6 +802,7 @@ class WebCLIEngine:
 
         status = WebCLIEngineStatus.OK
         if async_call is not None:
+            print(async_call)
             async_call.finish(return_value=status)
         log_api_exit(logger, log_prefix)
         return status
@@ -659,11 +811,11 @@ class WebCLIEngine:
     def complete_action(
         self, 
         action_id:int, 
-        response:Any, 
         async_call:Optional[AsyncCall]=None
     ) -> WebCLIEngineStatus:
+        print(f"2: {async_call}")
         try:
-            return self._complete_action_unsafe(action_id, response, async_call=async_call)
+            return self._complete_action_unsafe(action_id, async_call=async_call)
         except:
             logger.error("WebCLIEngine.complete_action_unsafe: exception captured", exc_info=True)
             raise

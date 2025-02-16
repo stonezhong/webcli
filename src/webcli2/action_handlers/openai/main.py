@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from webcli2.webcli_engine import TheradContext, thread_context_var
 from webcli2.models import User
 from webcli2.webcli.main import run_code
-from webcli2.webcli.output import MIMEType, CLIOutput, CLIOutputChunk
+from webcli2.webcli.output import CLIOutputChunk
 from webcli2.apilog import log_api_enter, log_api_exit
 from webcli2.ai_agent import AIAgent
 
@@ -40,18 +40,18 @@ class OpenAIRequest(BaseModel):
     args: str
 
 class OpenAIResponse(BaseModel):
-    stdout: CLIOutput
+    pass
 
-def render_response(response:CLIOutput, action_id:int, resource_dir:str):
-    for chunk in response.chunks:
-        if chunk.mime == MIMEType.PNG:
-            fname = f"{str(uuid.uuid4())}.png"
-            resource_dir = os.path.join(resource_dir, str(action_id))
-            os.makedirs(resource_dir, exist_ok=True)
-            # write to resource file
-            with open(os.path.join(resource_dir, fname), "wb") as resource_f:
-                resource_f.write(chunk.content)
-            chunk.content = f"<img src='/resources/{str(action_id)}/{fname}' />"
+# def render_response(response:CLIOutput, action_id:int, resource_dir:str):
+#     for chunk in response.chunks:
+#         if chunk.mime == MIMEType.PNG:
+#             fname = f"{str(uuid.uuid4())}.png"
+#             resource_dir = os.path.join(resource_dir, str(action_id))
+#             os.makedirs(resource_dir, exist_ok=True)
+#             # write to resource file
+#             with open(os.path.join(resource_dir, fname), "wb") as resource_f:
+#                 resource_f.write(chunk.content)
+#             chunk.content = f"<img src='/resources/{str(action_id)}/{fname}' />"
 
 
 class OpenAIActionHandler(ActionHandler):
@@ -111,14 +111,14 @@ class OpenAIActionHandler(ActionHandler):
             ]
         )
         openai_response = OpenAIResponse(
-            stdout=CLIOutput(
-                chunks=[
-                    CLIOutputChunk(
-                        mime = MIMEType.MARKDOWN,
-                        content = completion.choices[0].message.content
-                    )
-                ]
-            )
+            # stdout=CLIOutput(
+            #     chunks=[
+            #         CLIOutputChunk(
+            #             mime = MIMEType.MARKDOWN,
+            #             content = completion.choices[0].message.content
+            #         )
+            #     ]
+            # )
         )
         log_api_exit(logger, log_prefix)
         return openai_response
@@ -157,7 +157,8 @@ class OpenAIActionHandler(ActionHandler):
             )
             tc_now.stdout.chunks.append(chunk)
 
-        openai_response = OpenAIResponse(stdout=CLIOutput(chunks=[]))
+        # openai_response = OpenAIResponse(stdout=CLIOutput(chunks=[]))
+        openai_response = OpenAIResponse()
 
         # parse args
         try:
@@ -238,7 +239,7 @@ class OpenAIActionHandler(ActionHandler):
 
         openai_response.stdout.chunks = tc.stdout.chunks.copy()
         tc.stdout.chunks.clear()
-        render_response(openai_response.stdout, action_id, self.config.core.resource_dir)
+        # render_response(openai_response.stdout, action_id, self.config.core.resource_dir)
         log_api_exit(logger, log_prefix)
         return openai_response
 

@@ -28,7 +28,7 @@ def webcli_internal(config:WebCLIApplicationConfig, log_config:dict):
     )
     parser.add_argument(
         "action", type=str, help="Specify action",
-        choices=['start', 'init-db', 'create-user'],
+        choices=['start', 'init-db', 'create-user', 'test'],
         nargs=1
     )
     parser.add_argument(
@@ -55,9 +55,9 @@ def webcli_internal(config:WebCLIApplicationConfig, log_config:dict):
         create_user(config, args)
         return
 
-    # if action == "test":
-    #     test(args)
-    #     return
+    if action == "test":
+        test(config, args)
+        return
 
 def initialize_db(config:WebCLIApplicationConfig):
     db_engine = create_engine(config.core.db_url)
@@ -111,5 +111,60 @@ def create_user(config:WebCLIApplicationConfig, args:argparse.Namespace):
 #             print(v)
 
 
+
+
+def test(config:WebCLIApplicationConfig, args:argparse.Namespace):
+    from sqlalchemy.orm import Session
+    from sqlalchemy import func
+    from sqlalchemy import Engine, select, delete
+    from webcli2.web.main import config_action_handlers, action_handlers, webcli_engine
+    from webcli2.db_models import DBAction, DBThreadAction, DBActionResponseChunk
+    from webcli2.models import ActionResponseChunk
+    import datetime
+
+    with Session(webcli_engine.db_engine) as session:
+        with session.begin():
+            # db_action = DBAction(
+            #     user_id=1, 
+            #     handler_name="mermaid", 
+            #     is_completed=True,
+            #     created_at = datetime.datetime.utcnow(),
+            #     request={},
+            #     title="blah",
+            #     raw_text="blah"
+            # )
+            # session.add(db_action)
+
+            # db_thread_action = DBThreadAction(
+            #     thread_id=1,
+            #     action_id=1,
+            #     display_order=1,
+            #     show_question=True,
+            #     show_answer=True
+            # )
+            # session.add(db_thread_action)
+
+            # db_action_response_chunk = DBActionResponseChunk(
+            #     action_id=1,
+            #     order=1,
+            #     mime="text/plain",
+            #     text_content="Hello",
+            #     binary_content=None
+            # )
+            # session.add(db_action_response_chunk)
+
+            q = select(
+                func.max(DBActionResponseChunk.order)
+            ).where(DBActionResponseChunk.action_id == 2)
+            v = session.scalars(q).one()
+
+            print(v)
+
+        # ac = ActionResponseChunk.create(dac)
+
+            
+
+        # print(db_action_response_chunk.id)
+        # print(ac)
 
 

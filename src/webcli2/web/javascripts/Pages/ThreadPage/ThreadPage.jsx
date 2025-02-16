@@ -1,5 +1,5 @@
 import _ from "lodash";
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
@@ -12,6 +12,7 @@ import pino from 'pino';
 import { MdModeEdit, MdDelete } from "react-icons/md";
 import { setStateAsync } from "@/tools.js";
 import { PageHeader } from "@/Components/PageHeader";
+import mermaid from 'mermaid';
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
@@ -25,6 +26,17 @@ import {
 
 import '@/global.scss';
 import './ThreadPage.scss';
+
+const MermaidDiagram = ({ chart }) => {
+    const ref = useRef(null);
+
+    useEffect(() => {
+        mermaid.initialize({ startOnLoad: true });
+        mermaid.run();
+    }, [chart]);
+
+    return <div className="mermaid" ref={ref}>{chart}</div>;
+};
 
 /****************************************
  Page Layout
@@ -326,6 +338,33 @@ export class ThreadPage extends React.Component {
         });
     }
 
+    renderActionResponse(action) {
+        return <div>
+            {action.response_chunks.map((chunk, index) => {
+                if ((chunk.mime === "text/html")||(chunk.mime === "image/png")) {
+                    return <div dangerouslySetInnerHTML={{ __html: chunk.text_content }} key={index}/>;
+                } else if (chunk.mime === "application/json") {
+                    try {
+                        const json_content = JSON.parse(chunk.text_content);
+                        return <pre key={index}>{JSON.stringify(json_content, null, 4)}</pre>
+                    }
+                    catch (err) {
+                        return <pre>{err.message}</pre>
+                    }
+                } else if (chunk.mime === "text/markdown") {
+                    return <ReactMarkdown key={index}>{chunk.text_content}</ReactMarkdown>;
+                } else if (chunk.mime === "text/plain") {
+                    return <pre key={index}>{chunk.text_content}</pre>
+                } else if (chunk.mime == "application/webcli-mermaid") {
+                    return <MermaidDiagram key={index} chart={chunk.text_content} />
+                } else {
+                    throw new Error(`Unrecognized chunk: ${chunk.mime}`);
+                }       
+            })}
+        </div>;
+    }
+
+
     /**********************************************************************************
      * Render an action
      * action: Action
@@ -385,7 +424,7 @@ export class ThreadPage extends React.Component {
                 (threadAction.show_question)?<div className="action-question-wrapper"><pre className="question-raw-text">{action.raw_text}</pre></div>:null
             }
             {
-                (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():<div className="action-answer-wrapper">{actionHandler.renderAction(action)}</div>):null
+                (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():<div className="action-answer-wrapper">{this.renderActionResponse(action)}</div>):null
             }
             
         </div>;
@@ -507,7 +546,7 @@ export class ThreadPage extends React.Component {
         // Event: Connection opened
         window.webcli_socket.addEventListener("open", () => {
             logger.info("websocket.open: enter");
-            window.webcli_socket.send(JSON.stringify({ client_id: this.props.clientId }));
+            window.webcli_socket.send(JSON.stringify({ client_id: this.props.clientId, thread_id: this.props.threadId}));
             logger.info("websocket.open: exit");
         });
 
@@ -529,17 +568,17 @@ export class ThreadPage extends React.Component {
 
         // Event: Message received
         window.webcli_socket.addEventListener("message", async (event) => {
-            logger.info("websocket.message: enter");
-            logger.info("websocket.message: received ", event.data);
+            // logger.info("websocket.message: enter");
+            // logger.info("websocket.message: received ", event.data);
             try {
                 if (event.data == "ping") {
-                    logger.info("websocket.message: ping from server, ignore");
-                    logger.info("websocket.message: exit");
+                    // logger.info("websocket.message: ping from server, ignore");
+                    // logger.info("websocket.message: exit");
                     return;
                 }
+                logger.info("websocket.message: received ", event.data);
                 const parsedData = JSON.parse(event.data);
                 logger.info("websocket.message: parsed ", parsedData);
-
                 await this.onActionCompleted(parsedData.action_id, parsedData.response);
             } catch (error) {
                 error("websocket.message: parse JSON error ", error);

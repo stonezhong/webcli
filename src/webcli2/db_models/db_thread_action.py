@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Integer, Identity, Boolean, ForeignKey
+from sqlalchemy import Integer, Identity, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ._common import DBModelBase
@@ -24,3 +24,6 @@ class DBThreadAction(DBModelBase):
     show_question: Mapped[bool] = mapped_column("show_question", Boolean)
     show_answer:   Mapped[bool] = mapped_column("show_answer", Boolean)
 
+    __table_args__ = (
+        UniqueConstraint('thread_id', 'action_id', name='tar_thread_id_action_id'),
+    )

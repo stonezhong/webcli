@@ -26,15 +26,10 @@ class ConfigResponse(BaseModel):
 
 class ConfigHandler(ActionHandler):
     def parse_request(self, request:Any) -> Optional[ConfigRequest]:
-        log_prefix = "ConfigHandler.parse_request"
-        log_api_enter(logger, log_prefix)
         try:
             config_request = ConfigRequest.model_validate(request)
         except ValidationError:
-            logger.debug(f"{log_prefix}: invalid request format")
-            log_api_exit(logger, log_prefix)
             return None       
-        log_api_exit(logger, log_prefix)
         return config_request
 
 
