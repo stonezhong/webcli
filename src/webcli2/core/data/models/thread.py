@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Optional, List
+from typing import List
 from datetime import datetime
 
-from ._common import CoreModelBase
-from webcli2.core.data.db_models import DBThread, DBThreadAction
+from pydantic import BaseModel
+from webcli2.core.data.db_models import DBThread
 from webcli2.core.data.models import User, ThreadAction
 
-class Thread(CoreModelBase):
+class Thread(BaseModel):
     id: int
     user: User    
     created_at: datetime
@@ -26,7 +26,7 @@ class Thread(CoreModelBase):
             thread_actions = []
         )
 
-class ThreadSummary(CoreModelBase):
+class ThreadSummary(BaseModel):
     id: int
     user: User
     created_at: datetime

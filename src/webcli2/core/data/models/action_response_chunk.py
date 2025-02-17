@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from ._common import CoreModelBase
+from pydantic import BaseModel
 from webcli2.core.data.db_models import DBActionResponseChunk
 
 #############################################################################
@@ -9,7 +9,7 @@ from webcli2.core.data.db_models import DBActionResponseChunk
 # ---------------------------------------------------------------------------
 # It wraps the DB layer action
 #############################################################################
-class ActionResponseChunk(CoreModelBase):
+class ActionResponseChunk(BaseModel):
     id: int
     action_id: int
     order: int

@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Optional
 from datetime import datetime
 
-from ._common import CoreModelBase
+from pydantic import BaseModel
 from webcli2.core.data.db_models import DBActionHandlerConfiguration
 from .user import User
 
-class ActionHandlerConfiguration(CoreModelBase):
+class ActionHandlerConfiguration(BaseModel):
     id: int
     action_handler_name: str
     user:User

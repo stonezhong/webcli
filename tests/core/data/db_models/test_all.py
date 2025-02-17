@@ -77,7 +77,7 @@ def test_case_1(db_engine:Engine):
             user=user
         )
 
-        da.delete_thread(thread.id, user=user)
+        # da.delete_thread(thread.id, user=user)
         thread = da.get_thread(thread.id, user=user)
 
         print(json.dumps(

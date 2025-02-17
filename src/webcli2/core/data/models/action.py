@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional, List
 from datetime import datetime
 
-from ._common import CoreModelBase
+from pydantic import BaseModel
 from webcli2.core.data.db_models import DBAction
 from .action_response_chunk import ActionResponseChunk
 
@@ -12,7 +12,7 @@ from .action_response_chunk import ActionResponseChunk
 # ---------------------------------------------------------------------------
 # It wraps the DB layer action
 #############################################################################
-class Action(CoreModelBase):
+class Action(BaseModel):
     id: int
     handler_name: str
     is_completed: bool

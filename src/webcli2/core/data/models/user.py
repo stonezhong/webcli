@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from ._common import CoreModelBase
+from pydantic import BaseModel
 from webcli2.core.data.db_models import DBUser
 
-class User(CoreModelBase):
+class User(BaseModel):
     id: int
     is_active: bool
     email: str
