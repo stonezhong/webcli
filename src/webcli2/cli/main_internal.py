@@ -5,10 +5,11 @@ import argparse
 import getpass
 
 from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from webcli2.config import WebCLIApplicationConfig, load_config, normalize_filename
-from webcli2.webcli_engine import UserManager
-from webcli2.db_models import create_all_tables
+from webcli2.core.data import create_all_tables, DataAccessor
+from webcli2.core.service import WebCLIService
 
 class WebCLIApplication:
     config:WebCLIApplicationConfig      # config loaded from webcli_cfg.yaml
@@ -71,16 +72,13 @@ def create_user(config:WebCLIApplicationConfig, args:argparse.Namespace):
         exit(1)
 
     db_engine = create_engine(config.core.db_url)
-    um = UserManager(
-        db_engine=db_engine, 
-        private_key=config.core.private_key, 
-        public_key=config.core.public_key
-    )
-    user = um.create_user(email=args.email, password=password1)
-    if user is None:
-        print(f"Unable to create user")
-        exit(1)
-
+    with Session(db_engine) as session:
+        service = WebCLIService(
+            public_key = config.core.public_key,
+            private_key = config.core.private_key,
+            session = session,
+        )
+        user = service.create_user(email=args.email, password=password1)
     print(f"User created, id={user.id}, email={user.email}")
 
 # def test(args):

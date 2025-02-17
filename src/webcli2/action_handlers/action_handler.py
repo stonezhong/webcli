@@ -31,7 +31,7 @@ class ActionHandler(ABC):
         pass
 
     @abstractmethod
-    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict, *, service=Any):
         # to complete the action, you can call
         # cli_handler.complete_action(None, action_id, ...)
         #

@@ -13,16 +13,38 @@ from fastapi.templating import Jinja2Templates
 from fastapi import FastAPI, Request, HTTPException, Form, Depends
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
 
-from webcli2 import WebCLIEngine, WebCLIEngineStatus, WebSocketConnectionManager, UserManager
-from webcli2.models import Thread, User, Action, ThreadAction
-from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, \
-    PatchThreadActionRequest, PatchThreadRequest
+from webcli2 import WebCLIEngine, WebSocketConnectionManager
+from webcli2.core.data import Thread, User, Action, ThreadAction, ObjectNotFound
+    
 from fastapi import WebSocket
 
 from webcli2.config import load_config, ActionHandlerInfo
+from webcli2.core.service import WebCLIService, InvalidJWTTOken, NoHandler
 from .libs.tools import redirect
+
+class PatchThreadActionRequest(BaseModel):
+    show_question: Optional[bool] = None
+    show_answer: Optional[bool] = None
+
+class PatchActionRequest(BaseModel):
+    title: str
+
+class CreateThreadRequest(BaseModel):
+    title: str
+    description: str
+
+class CreateActionRequest(BaseModel):
+    title: str
+    raw_text: str
+    request: dict
+
+class PatchThreadRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
 
 ##########################################################
 # WEB_DIR is the directory of web insode webcli2 package
@@ -61,17 +83,21 @@ config_action_handlers()
 ##########################################################
 engine = create_engine(config.core.db_url)
 
-webcli_engine = WebCLIEngine(
+service = WebCLIService(
     users_home_dir = config.core.users_home_dir,
-    db_engine = engine,
-    wsc_manager=WebSocketConnectionManager(),
+    public_key=config.core.public_key,
+    private_key=config.core.private_key,
+    db_engine=engine,
     action_handlers = action_handlers
-)
-user_manager = UserManager(
-    db_engine=engine, 
-    private_key=config.core.private_key, 
-    public_key=config.core.public_key
-)
+) 
+
+
+# webcli_engine = WebCLIEngine(
+#     users_home_dir = config.core.users_home_dir,
+#     db_engine = engine,
+#     wsc_manager=WebSocketConnectionManager(),
+#     action_handlers = action_handlers
+# )
 
 ##########################################################
 # Authenticate user
@@ -83,13 +109,12 @@ def authenticate_user(request:Request) -> Optional[User]:
     if jwt_token is None:
         logger.info(f"authenticate_user: {request.url}, missing cookie access-token for JWT token")
         return None
-
-    user = user_manager.get_user_from_jwt_token(jwt_token)
-    if user is None:
-        # The JWT token did not pass validation
+    
+    try:
+        user = service.get_user_from_jwt_token(jwt_token)
+    except InvalidJWTTOken:
         logger.info(f"authenticate_user: {request}, invalid JWT token")
         return None
-
     return user
 
 ##########################################################
@@ -121,9 +146,9 @@ def authenticate_or_redirect(request:Request) -> Union[User, HTMLResponse]:
 ##########################################################
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    webcli_engine.startup()
+    service.startup()
     yield
-    webcli_engine.shutdown()
+    service.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(WEB_DIR, "static")), name="static")
@@ -131,12 +156,12 @@ app.mount("/dist", StaticFiles(directory=os.path.join(WEB_DIR, "dist")), name="d
 app.mount("/resources", StaticFiles(directory=config.core.resource_dir), name="resources")
 templates = Jinja2Templates(directory=os.path.join(WEB_DIR, "dist", "templates"))
 
-##########################################################
-# Endpoint for websocket
-##########################################################
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await webcli_engine.wsc_manager.websocket_endpoint(websocket)
+# ##########################################################
+# # Endpoint for websocket
+# ##########################################################
+# @app.websocket("/ws")
+# async def websocket_endpoint(websocket: WebSocket):
+#     await webcli_engine.wsc_manager.websocket_endpoint(websocket)
 
 ##########################################################
 # Endpoint for homepage
@@ -201,12 +226,13 @@ async def do_login(
     username: str = Form(...), 
     password: str = Form(...)
 ):
-    user = user_manager.login(username, password)
+    user = service.login_user(email = username, password = password)
     if user is None:
         logger.info(f"do_login: Incorrect username and/or password")
         raise HTTPException(status_code=401, detail="Incorret username or password")
 
-    jwt_token = user_manager.create_jwt_token(user)
+    jwt_token = service.generate_user_jwt_token(user)
+
     logger.info(f"do_login: User {username} logged in")
     response = redirect("/threads")
     response.set_cookie(
@@ -249,58 +275,82 @@ async def test_page(request: Request):
 ##########################################################
 @app.get("/apis/threads", response_model=List[Thread])
 async def list_threads(request:Request, user:User=Depends(authenticate_or_deny)):
-    threads = await webcli_engine.list_threads(user)
-    return threads
+    return service.list_threads(user=user)
 
 @app.post("/apis/threads", response_model=Thread)
 async def create_thread(request:Request, create_thread_request:CreateThreadRequest, user:User=Depends(authenticate_or_deny)):
-    thread = await webcli_engine.create_thread(create_thread_request, user)
-    return thread
+    return service.create_thread(
+        title=create_thread_request.title, 
+        description=create_thread_request.description, 
+        user=user
+    )
 
 @app.delete("/apis/threads/{thread_id}")
 async def delete_thread(request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
-    await webcli_engine.delete_thread(thread_id)
-    return None
+    try:
+        return service.delete_thread(thread_id, user=user)
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
 
 @app.get("/apis/threads/{thread_id}", response_model=Thread)
 async def get_thread(request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
-    thread = await webcli_engine.get_thread(thread_id)
-    if thread is None:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    return thread
+    try:
+        return service.get_thread(thread_id, user=user)
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
 
 @app.patch("/apis/threads/{thread_id}", response_model=Thread)
 async def patch_thread(request_data: PatchThreadRequest, request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
-    thread = await webcli_engine.patch_thread(thread_id, request_data)
-    if thread is None:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    return thread
+    try:
+        return service.patch_thread(
+            thread_id, 
+            user=user, 
+            title=request_data.title, 
+            description=request_data.description
+        )
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
 
 @app.post("/apis/threads/{thread_id}/actions", response_model=ThreadAction)
 async def create_thread_action(request_data: CreateActionRequest, request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
-    status, thread_aciton = await webcli_engine.async_start_action(request_data, user, thread_id)
-    if status == WebCLIEngineStatus.OK:
+    try:
+        action = service.create_action(
+            request=request_data.request, 
+            title=request_data.title, 
+            raw_text=request_data.raw_text, 
+            user=user
+        )
+        thread_aciton = service.append_action_to_thread(thread_id=thread_id, action_id=action.id, user=user)
         return thread_aciton
-    if status == WebCLIEngineStatus.NO_HANDLER:
+    except NoHandler:
         raise HTTPException(status_code=400, detail="No handler is registered for the action you requested")
-    else:
-        raise HTTPException(status_code=500, detail=f"Internal server error, status = {status}")
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
 
 @app.delete("/apis/threads/{thread_id}/actions/{action_id}")
 async def remove_action_from_thread(request:Request, thread_id:int, action_id:int, user:User=Depends(authenticate_or_deny)):
-    await webcli_engine.remove_action_from_thread(thread_id, action_id)
-    return None
+    try:
+        service.remove_action_from_thread(action_id=action_id, thread_id=thread_id, user=user)
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
 
 @app.patch("/apis/threads/{thread_id}/actions/{action_id}", response_model=ThreadAction)
 async def patch_thread_action(request_data: PatchThreadActionRequest, request:Request, thread_id:int, action_id:int, user:User=Depends(authenticate_or_deny)):
-    thread_action = await webcli_engine.patch_thread_action(thread_id, action_id, request_data)
-    if thread_action is None:
-        raise HTTPException(status_code=404, detail="ThreadAction not found")
-    return thread_action
+    try:
+        thread_action = service.patch_thread_action(
+            thread_id=thread_id, 
+            action_id=action_id, 
+            show_question=request_data.show_question, 
+            show_answer=request_data.show_answer
+        )
+        return thread_action
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
 
 @app.patch("/apis/actions/{action_id}", response_model=Action)
 async def patch_action(request_data: PatchActionRequest, request:Request, action_id:int, user:User=Depends(authenticate_or_deny)):
-    action = await webcli_engine.patch_action(action_id, request_data)
-    if action is None:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    return action
+    try:
+        action = service.patch_action(action_id=action_id, title = request_data.title, user=user)
+        return action
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")

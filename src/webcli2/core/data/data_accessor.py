@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import Engine, select, delete, func
-from webcli2.core.data.db_models import DBThread, DBThreadAction, DBAction, DBActionResponseChunk, DBUser
+from webcli2.core.data.db_models import DBThread, DBThreadAction, DBAction, DBActionResponseChunk, DBUser, DBActionHandlerConfiguration
 from webcli2.core.data.models import User, Thread, ThreadSummary, ThreadAction, Action, ActionResponseChunk
 
 #############################################################
@@ -43,10 +43,7 @@ class ObjectNotFound(DataError):
         if self.message is not None:
             message += self.message
         return message
-
-class AccessDenied(DataError):
-    pass
-   
+ 
 class DataAccessor:
     session: Session
 
@@ -244,6 +241,20 @@ class DataAccessor:
         
         return self.get_action(action_id, user=user)
 
+    def complete_action(self, action_id:int, *, user:User) -> Action:
+        """Set an action to be completed.
+        """
+        db_action = self.session.get(DBAction, action_id)
+        if db_action is None or db_action.user_id != user.id:
+            raise ObjectNotFound(object_type="Action", object_id=action_id)
+
+        db_action.is_completed = True
+        db_action.completed_at = get_utc_now()
+        self.session.add(db_action)
+        self.session.commit()
+        
+        return self.get_action(action_id, user=user)
+
     def append_action_to_thread(self, *, thread_id:int, action_id:int, user:User) -> ThreadAction:
         """Append an action to the end of a thread.
         """
@@ -295,7 +306,7 @@ class DataAccessor:
         binary_content:Optional[bytes] = None, 
         user:User
     ) -> ThreadAction:
-        """Append an action to the end of a thread.
+        """Append an response chunk to the end of a action.
         """
         db_action = self.session.get(DBAction, action_id)
         if db_action is None or db_action.user_id != user.id:
@@ -429,3 +440,22 @@ class DataAccessor:
             show_answer=db_thread_action.show_answer
         )
         return thread_action
+
+    def get_action_handler_user_config(
+        self,
+        *,
+        action_handler_name:str,
+        user:User 
+    ) -> dict:
+        """Get user configuration for a action handler.
+        """
+        db_ahc = self.session.scalars(
+            select(DBActionHandlerConfiguration)\
+                .where(DBActionHandlerConfiguration.user_id == user.id)\
+                .where(DBActionHandlerConfiguration.action_handler_name == action_handler_name)
+        ).one_or_none()
+        if db_ahc is None:
+            return {}
+        if db_ahc.configuration is None:
+            return {}
+        return db_ahc.configuration
