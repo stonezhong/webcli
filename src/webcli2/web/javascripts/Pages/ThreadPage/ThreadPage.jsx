@@ -1,5 +1,5 @@
 import _ from "lodash";
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
@@ -12,6 +12,8 @@ import pino from 'pino';
 import { MdModeEdit, MdDelete } from "react-icons/md";
 import { setStateAsync } from "@/tools.js";
 import { PageHeader } from "@/Components/PageHeader";
+import ReactMarkdown from "react-markdown";
+import mermaid from 'mermaid';
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
@@ -25,6 +27,17 @@ import {
 
 import '@/global.scss';
 import './ThreadPage.scss';
+
+const MermaidDiagram = ({ chart }) => {
+    const ref = useRef(null);
+
+    useEffect(() => {
+        mermaid.initialize({ startOnLoad: true });
+        mermaid.run();
+    }, [chart]);
+
+    return <div className="mermaid" ref={ref}>{chart}</div>;
+};
 
 /****************************************
  Page Layout
@@ -326,6 +339,56 @@ export class ThreadPage extends React.Component {
         });
     }
 
+    renderResponseChunk(response_chunk) {
+        if (response_chunk.mime === "text/html") {
+            return <div key={response_chunk.id} dangerouslySetInnerHTML={{ __html: response_chunk.text_content }} />;
+        }
+        if (response_chunk.mime === "text/markdown") {
+            return <ReactMarkdown key={response_chunk.id}>{response_chunk.text_content}</ReactMarkdown>;
+        }
+        if (response_chunk.mime === "application/x-webcli-mermaid") {
+            return <MermaidDiagram key={response_chunk.id} chart={response_chunk.text_content} />;
+        }
+        if (response_chunk.mime === "text/plain") {
+            return <pre key={response_chunk.id}>{response_chunk.text_content}</pre>;
+        }
+
+        // for anything unknown, show text
+        return <pre key={response_chunk.id}>{response_chunk.text_content}</pre>;
+    }
+
+    renderAnswer(action) {
+        /*******************
+         * action looks like this
+         * {
+         *     id: 2,
+         *     is_completed: false,
+         *     completed_at: null,
+         *     created_at: "2025-02-17T08:38:14.632326",
+         *     raw_text: "aaa",
+         *     request: {},
+         *     response_chunks: [
+         *         {
+         *             id: 1,
+         *             action_id: 2,
+         *             mime: "text/html",
+         *             order: 1,
+         *             text_content: "<h1>Hello</h1>",
+         *             binary_content: null,
+         *         }
+         *     ],
+         *     title: "aaa"
+         * 
+         * }
+         */
+        return [
+            ...action.response_chunks.map(response_chunk => this.renderResponseChunk(response_chunk)),
+            action.is_completed?null:<Spinner key="loading" animation="border" role="status">
+                <span className="visually-hidden">Loading...</span>
+            </Spinner>
+        ];
+    }
+
     /**********************************************************************************
      * Render an action
      * action: Action
@@ -385,16 +448,10 @@ export class ThreadPage extends React.Component {
                 (threadAction.show_question)?<div className="action-question-wrapper"><pre className="question-raw-text">{action.raw_text}</pre></div>:null
             }
             {
-                (threadAction.show_answer)?((action.response === null)?this.renderPendingAction():<div className="action-answer-wrapper">{actionHandler.renderAction(action)}</div>):null
+                (threadAction.show_answer)?(<div className="action-answer-wrapper">{this.renderAnswer(action)}</div>):null
             }
             
         </div>;
-    }
-
-    renderPendingAction() {
-        return <Spinner animation="border" role="status">
-            <span className="visually-hidden">Loading...</span>
-        </Spinner>
     }
 
     /******************************************************************************

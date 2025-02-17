@@ -48,7 +48,7 @@ class MermaidHandler(ActionHandler):
         elif mermaid_request.type == "markdown":
             mime = "text/markdown"
         elif mermaid_request.type == "mermaid":
-            mime = "application/x-webcli-mermiad"
+            mime = "application/x-webcli-mermaid"
 
         service.append_response_to_action(
             action_id,

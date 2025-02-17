@@ -338,10 +338,11 @@ async def remove_action_from_thread(request:Request, thread_id:int, action_id:in
 async def patch_thread_action(request_data: PatchThreadActionRequest, request:Request, thread_id:int, action_id:int, user:User=Depends(authenticate_or_deny)):
     try:
         thread_action = service.patch_thread_action(
-            thread_id=thread_id, 
-            action_id=action_id, 
+            thread_id, 
+            action_id, 
             show_question=request_data.show_question, 
-            show_answer=request_data.show_answer
+            show_answer=request_data.show_answer,
+            user=user
         )
         return thread_action
     except ObjectNotFound:
