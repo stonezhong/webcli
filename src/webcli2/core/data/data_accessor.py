@@ -222,7 +222,7 @@ class DataAccessor:
         action.response_chunks = [
             ActionResponseChunk.from_db(db_action_response_chunk) for db_action_response_chunk in self.session.scalars(
                 select(DBActionResponseChunk)\
-                    .where(DBThreadAction.action_id == action_id)
+                    .where(DBActionResponseChunk.action_id == action_id)
             )
         ]
         return action
@@ -305,7 +305,7 @@ class DataAccessor:
         text_content:Optional[str] = None, 
         binary_content:Optional[bytes] = None, 
         user:User
-    ) -> ThreadAction:
+    ) -> ActionResponseChunk:
         """Append an response chunk to the end of a action.
         """
         db_action = self.session.get(DBAction, action_id)
@@ -459,3 +459,14 @@ class DataAccessor:
         if db_ahc.configuration is None:
             return {}
         return db_ahc.configuration
+
+    def get_thread_ids_for_action(self, action_id:int) -> List[int]:
+        """Get list of threads that has this action.
+
+        Note: We are not checking user, since an action can potentially be part of multiple
+              threads owned by different users.
+        """
+        return [db_thread_action.thread_id for db_thread_action in self.session.scalars(
+            select(DBThreadAction)\
+                .where(DBThreadAction.action_id == action_id)
+        )]

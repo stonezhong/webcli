@@ -156,12 +156,12 @@ app.mount("/dist", StaticFiles(directory=os.path.join(WEB_DIR, "dist")), name="d
 app.mount("/resources", StaticFiles(directory=config.core.resource_dir), name="resources")
 templates = Jinja2Templates(directory=os.path.join(WEB_DIR, "dist", "templates"))
 
-# ##########################################################
-# # Endpoint for websocket
-# ##########################################################
-# @app.websocket("/ws")
-# async def websocket_endpoint(websocket: WebSocket):
-#     await webcli_engine.wsc_manager.websocket_endpoint(websocket)
+##########################################################
+# Endpoint for websocket
+##########################################################
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await service.websocket_endpoint(websocket)
 
 ##########################################################
 # Endpoint for homepage
@@ -314,14 +314,14 @@ async def patch_thread(request_data: PatchThreadRequest, request:Request, thread
 @app.post("/apis/threads/{thread_id}/actions", response_model=ThreadAction)
 async def create_thread_action(request_data: CreateActionRequest, request:Request, thread_id:int, user:User=Depends(authenticate_or_deny)):
     try:
-        action = service.create_action(
+        thread_action = service.create_thread_action(
             request=request_data.request, 
+            thread_id=thread_id,
             title=request_data.title, 
             raw_text=request_data.raw_text, 
             user=user
         )
-        thread_aciton = service.append_action_to_thread(thread_id=thread_id, action_id=action.id, user=user)
-        return thread_aciton
+        return thread_action
     except NoHandler:
         raise HTTPException(status_code=400, detail="No handler is registered for the action you requested")
     except ObjectNotFound:

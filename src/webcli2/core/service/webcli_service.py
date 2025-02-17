@@ -6,17 +6,23 @@ logger = logging.getLogger(__name__)
 from typing import Optional, List, Dict, Any
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from asyncio import get_event_loop, AbstractEventLoop
+from asyncio import get_event_loop, AbstractEventLoop, run_coroutine_threadsafe
 from copy import copy
+import json
+import time
 
 from sqlalchemy.orm import Session
 import bcrypt
 import jwt
 from pydantic import BaseModel
 from sqlalchemy import Engine
+from fastapi import WebSocket, WebSocketDisconnect
 
-from webcli2.core.data import User, Thread, Action, DataAccessor, ThreadAction
+from webcli2.core.data import User, Thread, Action, DataAccessor, ThreadAction, ActionResponseChunk
 import webcli2.action_handlers.action_handler as action_handler
+from .notifications import NotificationManager, pop_notification, Notification
+
+WEB_SOCKET_PING_INTERVAL = 20  # in seconds
 
 class ServiceError(Exception):
     pass
@@ -67,6 +73,7 @@ class WebCLIService:
     executor: Optional[ThreadPoolExecutor]          # A thread pool
     event_loop: Optional[AbstractEventLoop]         # The current main loop
     action_handlers: Dict[str, action_handler.ActionHandler]
+    nm: NotificationManager
 
     def __init__(
         self, 
@@ -84,6 +91,7 @@ class WebCLIService:
         self.executor = None
         self.event_loop = None
         self.action_handlers = copy(action_handlers)
+        self.nm = NotificationManager()
 
     def startup(self):
         log_prefix = "WebCLIService.startup"
@@ -245,7 +253,7 @@ class WebCLIService:
             da = DataAccessor(session)
             return da.patch_thread(thread_id, title=title, description=description, user=user)
 
-    def create_action(self, *, request:dict, title:str, raw_text:str, user:User) -> Action:
+    def create_thread_action(self, *, request:dict, thread_id:int, title:str, raw_text:str, user:User) -> ThreadAction:
         """Create a new action.
         """
         action_handler_name, action_handler = self._discover_action_handler(request)
@@ -262,6 +270,8 @@ class WebCLIService:
                 raw_text=raw_text, 
                 user=user
             )
+            thread_aciton = da.append_action_to_thread(thread_id=thread_id, action_id=action.id, user=user)
+
             action_handler_user_config = self.get_action_handler_user_config(
                 action_handler_name=action_handler_name,
                 user=user
@@ -276,7 +286,7 @@ class WebCLIService:
                 action_handler_user_config
             )
             logger.debug(f"WebCLIService.create_action: submit a thread task for {action_handler_name} to handle an action")
-            return action
+            return thread_aciton
 
     def delete_thread(self, thread_id:int, *, user:User):
         """Delete a thread.
@@ -315,6 +325,36 @@ class WebCLIService:
             da = DataAccessor(session)
             return da.append_action_to_thread(thread_id=thread_id, action_id=action_id, user=user)
 
+    def complete_action(self, action_id:int, *, user:User) -> Action:
+        """Set an action to be completed.
+        """
+        with Session(self.db_engine) as session:
+            da = DataAccessor(session)
+            action = da.complete_action(action_id, user=user)
+
+            thread_ids = da.get_thread_ids_for_action(action_id)
+
+            completed_at = action.model_dump(mode="json")["completed_at"]
+            event = {
+                "type": "action-completed",
+                "action_id": action_id,
+                "completed_at": completed_at
+            }
+
+            notifications: List[Notification] = [
+                Notification(
+                    topic_name=f"topic-{thread_id}", 
+                    event = event
+                ) for thread_id in thread_ids
+            ]
+
+            run_coroutine_threadsafe(
+                self.nm.publish_notifications(notifications),
+                self.event_loop
+            )
+        
+            return action
+
     def append_response_to_action(
         self, 
         action_id:int, 
@@ -323,18 +363,38 @@ class WebCLIService:
         text_content:Optional[str] = None, 
         binary_content:Optional[bytes] = None, 
         user:User
-    ) -> ThreadAction:
+    ) -> ActionResponseChunk:
         """Append an response chunk to the end of a action.
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
-            return da.append_response_to_action(
+            action_response_chunk = da.append_response_to_action(
                 action_id, 
                 mime=mime, 
                 text_content=text_content, 
                 binary_content=binary_content, 
                 user=user
             )
+            thread_ids = da.get_thread_ids_for_action(action_id)
+            event = {
+                "type": "action-response-chunk",
+                "id": action_response_chunk.id,
+                "action_id": action_id,
+                "order": action_response_chunk.order,
+                "mime": action_response_chunk.mime,
+                "text_content": action_response_chunk.text_content
+            }
+
+            notifications: List[Notification] = [
+                Notification(topic_name=f"topic-{thread_id}", event = event) for thread_id in thread_ids
+            ]
+
+            run_coroutine_threadsafe(
+                self.nm.publish_notifications(notifications),
+                self.event_loop
+            )
+
+            return action_response_chunk
 
 
     def patch_thread_action(
@@ -367,8 +427,65 @@ class WebCLIService:
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
             return da.get_action_handler_user_config(action_handler_name=action_handler_name, user=user)
-    
-    def complete_action(self, action_id:int, *, user:User) -> Action:
-        with Session(self.db_engine) as session:
-            da = DataAccessor(session)
-            return da.complete_action(action_id, user=user)
+
+    #######################################################################
+    # This is called by web socket endpoint from fastapi
+    # Here is an example
+    #
+    # @app.websocket("/ws")
+    # async def websocket_endpoint(websocket: WebSocket):
+    #     web_socket_connection_manager.websocket_endpoint(websocket)
+    #
+    #######################################################################
+    async def websocket_endpoint(self, websocket: WebSocket):
+        log_prefix = "WebCLIService.websocket_endpoint"
+
+        logger.debug(f"{log_prefix}: waiting for incoming connection")
+        await websocket.accept()
+        logger.debug(f"{log_prefix}: client is connected")
+
+        # client need to report it's client ID in the first place
+        data = await websocket.receive_text()
+        logger.debug(f"{log_prefix}: client information is: {data}")
+        client_id:Optional[str] = None
+        thread_id:Optional[int] = None
+        try:
+            json_data = json.loads(data)
+            if isinstance(json_data, dict):
+                client_id = json_data.get("client_id")
+                if not isinstance(client_id, str):
+                    client_id = None
+                thread_id = json_data.get("thread_id")
+                if not isinstance(thread_id, int):
+                    thread_id = None
+        except json.decoder.JSONDecodeError:
+            pass
+
+        if client_id is None or thread_id is None:
+            logger.debug(f"{log_prefix}: client information is corrupted, quit")
+            await websocket.close(code=1000, reason="Client ID and Thread ID not provided")
+            return
+
+        topic_name = f"topic-{thread_id}"
+        q = await self.nm.subscribe(topic_name, client_id)
+          
+        try:
+            last_ping_time:float = None
+            while True:
+                # need to ping client if needed
+                now = time.time()
+                if last_ping_time is None or now - last_ping_time >= WEB_SOCKET_PING_INTERVAL:
+                    last_ping_time = now
+                    await websocket.send_text("ping")
+
+                r = await pop_notification(q, 10)
+                if r is None:
+                    # no notification
+                    continue
+
+                await websocket.send_text(json.dumps(r))
+                logger.debug(f"{log_prefix}: notify client({client_id}) on topic({topic_name}) via websocket")
+        except WebSocketDisconnect:
+            await self.nm.unsubscribe(topic_name, client_id)
+            logger.debug(f"{log_prefix}: client({client_id}) disconnected")
+

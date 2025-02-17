@@ -536,6 +536,59 @@ export class ThreadPage extends React.Component {
         logger.info("ThreadPage.componentWillUnmount: exit");
     }
 
+    onThreadEvent = async threadEvent => {
+        /******************************************
+         * threadEvent looks like this
+         * {
+         *     action_id: 1
+         *     mime: "text/plain",
+         *     order: 6
+         *     text_content: "blah",
+         *     type: "action-response-chunk"
+         * }
+         */
+        if (threadEvent.type === "action-response-chunk") {
+            const action_id = threadEvent.action_id;
+            const threadActionWrapper = _.find(
+                this.state.threadActionWrappers, taw => taw.threadAction.action.id === action_id
+            );
+            if (_.isUndefined(threadActionWrapper)) {
+                return;
+            }
+            const new_response_chunks1 = threadActionWrapper.threadAction.action.response_chunks.filter(response_chunk => response_chunk.order < threadEvent.order);
+            const new_response_chunks2 = threadActionWrapper.threadAction.action.response_chunks.filter(response_chunk => response_chunk.order > threadEvent.order);
+            const new_response_chunks = [
+                ...new_response_chunks1,
+                {
+                    action_id: action_id,
+                    binary_content: null,
+                    id: threadEvent.id,
+                    mime: threadEvent.mime,
+                    text_content: threadEvent.text_content,
+                    order: threadEvent.order
+                },
+                ...new_response_chunks2,
+            ];
+            threadActionWrapper.threadAction.action.response_chunks = new_response_chunks;
+            this.setState({threadActionWrappers: this.state.threadActionWrappers});
+            return;
+        }
+
+        if (threadEvent.type === "action-completed") {
+            const action_id = threadEvent.action_id;
+            const threadActionWrapper = _.find(
+                this.state.threadActionWrappers, taw => taw.threadAction.action.id === action_id
+            );
+            if (_.isUndefined(threadActionWrapper)) {
+                return;
+            }
+            threadActionWrapper.threadAction.action.is_completed = true;
+            this.setState({threadActionWrappers: this.state.threadActionWrappers});
+            return;
+        }
+
+    }
+
     onActionCompleted = async (actionId, response) => {
         await updateMatchingItemsFromReactStateAsync({
             element: this,
@@ -564,7 +617,10 @@ export class ThreadPage extends React.Component {
         // Event: Connection opened
         window.webcli_socket.addEventListener("open", () => {
             logger.info("websocket.open: enter");
-            window.webcli_socket.send(JSON.stringify({ client_id: this.props.clientId }));
+            window.webcli_socket.send(JSON.stringify({ 
+                client_id: this.props.clientId,
+                thread_id: this.props.threadId,
+            }));
             logger.info("websocket.open: exit");
         });
 
@@ -597,7 +653,7 @@ export class ThreadPage extends React.Component {
                 const parsedData = JSON.parse(event.data);
                 logger.info("websocket.message: parsed ", parsedData);
 
-                await this.onActionCompleted(parsedData.action_id, parsedData.response);
+                await this.onThreadEvent(parsedData);
             } catch (error) {
                 error("websocket.message: parse JSON error ", error);
             }
