@@ -33,7 +33,7 @@ dependencies = [
 [project.scripts]
 webcli = "webcli2.cli:webcli"
 
- [tool.hatch.build.targets.wheel]
+[tool.hatch.build.targets.wheel]
 exclude = [
     "src/webcli2/web/.babelrc",
     "src/webcli2/web/.gitignore",
