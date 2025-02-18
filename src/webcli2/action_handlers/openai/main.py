@@ -1,26 +1,90 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Any, Optional, Literal, TextIO, BinaryIO, Union
-from pydantic import BaseModel, ValidationError
-import uuid
+from typing import Any, Optional, Literal, Union, Dict, BinaryIO, TextIO
+import threading
+import code
 import os
 import argparse
 import shlex
 import io
-import json
+from contextvars import ContextVar
+from contextlib import redirect_stdout, redirect_stderr
+
+from pydantic import BaseModel, ValidationError
 
 from webcli2.config import WebCLIApplicationConfig, load_config
 from webcli2 import ActionHandler
-from pydantic import ValidationError
-from webcli2.webcli_engine import TheradContext, thread_context_var
-from webcli2.models import User
-from webcli2.webcli.main import run_code
-from webcli2.webcli.output import MIMEType, CLIOutput, CLIOutputChunk
+from webcli2.core.data import User
 from webcli2.apilog import log_api_enter, log_api_exit
-from webcli2.ai_agent import AIAgent
+from webcli2.ai_agent import AIAgent, AITool
 
 from openai import OpenAI
+
+class OpenAITheradContext:
+    user:User
+    action_id:int
+    service: Any
+
+    def __init__(self, user:User, action_id:int, service:Any):
+        self.user = user
+        self.action_id = action_id
+        self.service = service
+
+openai_thread_context_var = ContextVar("openai_thread_context", default=None)
+
+GLOBAL_II_DICT: Dict[int, code.InteractiveInterpreter] = {}
+GLOBAL_II_DICT_LOCK = threading.Lock()
+
+def run_code(oatc:OpenAITheradContext, locals:dict, source_code):
+    my_locals = locals.copy()
+
+    # create an ii if not exist
+    with GLOBAL_II_DICT_LOCK:
+        user = oatc.user
+        # we will create stdout if needed
+        # we will create ii if needed
+        if user.id not in GLOBAL_II_DICT:
+            ii = code.InteractiveInterpreter(locals=my_locals)
+            GLOBAL_II_DICT[user.id] = ii
+        else:
+            ii = GLOBAL_II_DICT[user.id]
+    
+    # now run the code, capture output
+    service = oatc.service
+    action_id = oatc.action_id
+    with io.StringIO() as f:
+        with redirect_stdout(f):
+            with redirect_stderr(f):
+                _ = ii.runsource(source_code, symbol="exec")
+        service.append_response_to_action(
+            action_id,
+            mime = "text/plain",
+            text_content = f.getvalue(),
+            user = user
+        )
+
+
+def cli_print(content:Union[str, bytes], *, mime:str="text/html"):
+    openai_thread_context:OpenAITheradContext = openai_thread_context_var.get()
+    service = openai_thread_context.service
+    action_id = openai_thread_context.action_id
+    user = openai_thread_context.user
+
+    if isinstance(content, str):
+        service.append_response_to_action(
+            action_id,
+            mime = mime,
+            text_content = content,
+            user = user
+        )
+    else:
+        service.append_response_to_action(
+            action_id,
+            mime = mime,
+            binary_content = content,
+            user = user
+        )
 
 ######################################################################
 # ArgumentParser.parse() failure causing application quit
@@ -39,21 +103,6 @@ class OpenAIRequest(BaseModel):
     command_text: str
     args: str
 
-class OpenAIResponse(BaseModel):
-    stdout: CLIOutput
-
-def render_response(response:CLIOutput, action_id:int, resource_dir:str):
-    for chunk in response.chunks:
-        if chunk.mime == MIMEType.PNG:
-            fname = f"{str(uuid.uuid4())}.png"
-            resource_dir = os.path.join(resource_dir, str(action_id))
-            os.makedirs(resource_dir, exist_ok=True)
-            # write to resource file
-            with open(os.path.join(resource_dir, fname), "wb") as resource_f:
-                resource_f.write(chunk.content)
-            chunk.content = f"<img src='/resources/{str(action_id)}/{fname}' />"
-
-
 class OpenAIActionHandler(ActionHandler):
     client: OpenAI
     config: WebCLIApplicationConfig
@@ -62,6 +111,15 @@ class OpenAIActionHandler(ActionHandler):
         self.client = OpenAI(api_key=api_key)
         self.config = load_config()
         os.makedirs(self.config.core.resource_dir, exist_ok=True)
+
+    def cli_open(self, *args, **kwargs)->Union[BinaryIO, TextIO]:
+        openai_thread_context:OpenAITheradContext = openai_thread_context_var.get()
+        user = openai_thread_context.user
+        filename = args[0]
+        if filename.startswith("/"):
+            raise ValueError(f"filename cannot start with /")
+        new_args = [ os.path.join(self.config.core.users_home_dir, str(user.id), filename) ] + list(args[1:])
+        return open(*new_args, **kwargs)
 
     def parse_request(self, request:Any) -> Optional[OpenAIRequest]:
         log_prefix = "OpenAIActionHandler.parse_request"
@@ -96,8 +154,10 @@ class OpenAIActionHandler(ActionHandler):
         action_id:int, 
         openai_request:OpenAIRequest,
         user:User, 
-        action_handler_user_config:dict
-    ) -> OpenAIResponse:
+        action_handler_user_config:dict,
+        *,
+        oatc:OpenAITheradContext
+    ):
         # TODO: in case of exception, absorb the error and surface the error in openai_response
         log_prefix = "OpenAIActionHandler.handle_openai"
         log_api_enter(logger, log_prefix)
@@ -110,18 +170,14 @@ class OpenAIActionHandler(ActionHandler):
                 {"role": "user", "content": openai_request.command_text}
             ]
         )
-        openai_response = OpenAIResponse(
-            stdout=CLIOutput(
-                chunks=[
-                    CLIOutputChunk(
-                        mime = MIMEType.MARKDOWN,
-                        content = completion.choices[0].message.content
-                    )
-                ]
-            )
+        self.service.append_response_to_action(
+            action_id,
+            mime = "text/markdown",
+            text_content = completion.choices[0].message.content,
+            user = user
         )
+        
         log_api_exit(logger, log_prefix)
-        return openai_response
 
     def handle_python(
         self, 
@@ -129,35 +185,12 @@ class OpenAIActionHandler(ActionHandler):
         openai_request:OpenAIRequest,
         user:User, 
         action_handler_user_config:dict,
-        tc:TheradContext
-    ) -> OpenAIResponse:
+        *,
+        oatc:OpenAITheradContext
+    ):
         # TODO: in case of exception, absorb the error and surface the error in openai_response
         log_prefix = "OpenAIActionHandler.handle_python"
         log_api_enter(logger, log_prefix)
-
-        def cli_print(content, mime:str=MIMEType.HTML, name:Optional[str]=None):
-            tc_now = thread_context_var.get()
-            if isinstance(content, io.StringIO):
-                actual_content = content.getvalue()
-            elif isinstance(content, io.BytesIO):
-                actual_content = content.getvalue()
-            elif isinstance(content, bytes):
-                actual_content = content
-            elif isinstance(content, str):
-                actual_content = content
-            elif isinstance(content, dict):
-                actual_content = json.dumps(content)
-            else:
-                raise ValueError(f"content has wrong type: {type(content)}")
-            
-            chunk = CLIOutputChunk(
-                name = name,
-                mime = mime,
-                content=actual_content
-            )
-            tc_now.stdout.chunks.append(chunk)
-
-        openai_response = OpenAIResponse(stdout=CLIOutput(chunks=[]))
 
         # parse args
         try:
@@ -174,13 +207,30 @@ class OpenAIActionHandler(ActionHandler):
             logger.warning(f"{log_prefix}: %python% action has wrong arguments: both load and save are set, action_id={action_id}")
             args = None
         
+        ######################################################################################
+        # Usage:
+        #
+        # load your code in foo.py, prepend to your code and run it
+        # %python% --load foo.py
+        #
+        # load your code in foo.py, print it, prepend to your code and run it
+        # %python% --load foo.py --print
+        #
+        # save your code to foo.py and run it
+        # %python% --save foo.py
+        # 
+        # Simply run your code
+        # %python%
+        ######################################################################################
         if args is None:
-            cli_print("wrong arguments for %python% action", mime=MIMEType.TEXT)
-            openai_response.stdout.chunks = tc.stdout.chunks.copy()
-            tc.stdout.chunks.clear()
-            log_api_exit(logger, log_prefix)
-            return openai_response
-        
+            self.service.append_response_to_action(
+                action_id,
+                mime = "text/plain",
+                text_content = "wrong syntax",
+                user = user
+            )
+            return
+
         extra_code = ""
         if args.save is not None:
             user_home_dir = os.path.join(self.config.core.users_home_dir, str(user.id))
@@ -198,71 +248,43 @@ class OpenAIActionHandler(ActionHandler):
             except FileNotFoundError:
                 pass
             if args.print:
-                cli_print(extra_code, mime=MIMEType.TEXT)
+                self.service.append_response_to_action(
+                    action_id,
+                    mime = "text/plain",
+                    text_content = extra_code,
+                    user = user
+                )
 
-        def cli_open(*args, **kwargs)->Union[BinaryIO, TextIO]:
-            filename = args[0]
-            if filename.startswith("/"):
-                raise ValueError(f"filename cannot start with /")
-            new_args = [ os.path.join(self.config.core.users_home_dir, str(user.id), filename) ] + list(args[1:])
-            return open(*new_args, **kwargs)
-        def openai(question:str, tools=None):
-            completion = self.client.chat.completions.create(
-                # model="gpt-3.5-turbo",
-                # model="gpt-4",
-                model="gpt-4o",
-                store=True,
-                messages=[
-                    {"role": "user", "content": question}
-                ],
-                tools=tools
-            )
-            return completion
-        
-        def get_ai_agent() -> AIAgent:
-            return AIAgent(self)
+        # def get_ai_agent() -> AIAgent:
+        #     return AIAgent(self)
 
         run_code(
-            tc, 
-            user,
-            openai_request.client_id,
+            oatc,
             {
-                "openai": openai,
-                "cli_open": cli_open,
                 "cli_print": cli_print,
-                "get_action_handler": self.get_action_handler,
-                "get_ai_agent": get_ai_agent
+                "cli_open": self.cli_open,
             }, 
-            extra_code + "\n" + openai_request.command_text
+            openai_request.command_text
         )
-
-        openai_response.stdout.chunks = tc.stdout.chunks.copy()
-        tc.stdout.chunks.clear()
-        render_response(openai_response.stdout, action_id, self.config.core.resource_dir)
         log_api_exit(logger, log_prefix)
-        return openai_response
 
     def _handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "OpenAIActionHandler.handle"
         log_api_enter(logger, log_prefix)
 
-        tc = TheradContext(user, action_id)
-        thread_context_var.set(tc)
+        oatc = OpenAITheradContext(
+            user = user,
+            action_id = action_id,
+            service = self.service
+        )
+        openai_thread_context_var.set(oatc)
 
         openai_request = self.parse_request(request)
-        tc.client_id = openai_request.client_id
 
         if openai_request.type == "openai":
-            openai_response = self.handle_openai(action_id, openai_request, user, action_handler_user_config)
+            self.handle_openai(action_id, openai_request, user, action_handler_user_config, oatc=oatc)
         elif openai_request.type == "python":
-            openai_response = self.handle_python(action_id, openai_request, user, action_handler_user_config, tc)
+            self.handle_python(action_id, openai_request, user, action_handler_user_config, oatc=oatc)
 
         logger.debug(f"{log_prefix}: action has been handled successfully, action_id={action_id}")
-        self.webcli_engine.complete_action(action_id, openai_response.model_dump(mode="json"))
-        self.webcli_engine.notify_websockt_client(
-            openai_request.client_id, 
-            action_id, 
-            openai_response
-        )
-
         log_api_exit(logger, log_prefix)

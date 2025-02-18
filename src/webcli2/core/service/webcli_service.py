@@ -148,7 +148,7 @@ class WebCLIService:
         The purpose is to capture exception and log
         """
         try:
-            action_handler(action_id, request, user, action_handler_user_config, service=self)
+            action_handler(action_id, request, user, action_handler_user_config)
             self.complete_action(action_id, user=user)
             logger.debug(f"Action handler {action_handler} successfully handled an action({action_id})")
         except Exception:

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from webcli2 import ActionHandler
 from pydantic import ValidationError
-from webcli2.models import User
+from webcli2.core.data import User
 
 # Mermaid action handler
 class MermaidRequest(BaseModel):
@@ -39,7 +39,7 @@ class MermaidHandler(ActionHandler):
     # the "command" field is text
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
-    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict, *, service=Any):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "MermaidHandler.handle"
 
         mermaid_request = self.parse_request(request)
@@ -50,7 +50,7 @@ class MermaidHandler(ActionHandler):
         elif mermaid_request.type == "mermaid":
             mime = "application/x-webcli-mermaid"
 
-        service.append_response_to_action(
+        self.service.append_response_to_action(
             action_id,
             mime = mime,
             text_content = mermaid_request.command_text,

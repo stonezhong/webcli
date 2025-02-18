@@ -2,25 +2,24 @@ from __future__ import annotations  # Enables forward declaration
 
 from typing import Any, Optional
 from abc import ABC, abstractmethod
-import webcli2.webcli_engine as webcli_engine
-from webcli2.models import User
+from webcli2.core.data import User
 
 class ActionHandler(ABC):
-    webcli_engine: Optional[webcli_engine.WebCLIEngine] = None
-    wsc_manager: Optional[webcli_engine.WebSocketConnectionManager] = None
     require_shutdown: Optional[bool] = None
+    service:Any = None
 
     # can you handle this request?
     @abstractmethod
     def can_handle(self, request:Any) -> bool:
         pass # pragma: no cover
 
-    def startup(self, webcli_engine:webcli_engine.WebCLIEngine):
+    def startup(self, service:Any):
+        # service is actually a webcli.core.service.WebCLIService
         assert self.require_shutdown is None
-        assert self.webcli_engine is None
+        assert self.service is None
 
         self.require_shutdown = False
-        self.webcli_engine = webcli_engine
+        self.service = service
 
     def shutdown(self):
         # assert self.require_shutdown == False
@@ -31,7 +30,7 @@ class ActionHandler(ABC):
         pass
 
     @abstractmethod
-    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict, *, service=Any):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         # to complete the action, you can call
         # cli_handler.complete_action(None, action_id, ...)
         #
@@ -39,7 +38,7 @@ class ActionHandler(ABC):
         # cli_handler.update_action(None, action_id:int, ...):
         pass # pragma: no cover
 
-    # An action handler can get other action handler by name
-    def get_action_handler(self, action_handler_name:str) -> Optional["ActionHandler"]:
-        return self.webcli_engine.action_handlers.get(action_handler_name)
+    # # An action handler can get other action handler by name
+    # def get_action_handler(self, action_handler_name:str) -> Optional["ActionHandler"]:
+    #     return self.webcli_engine.action_handlers.get(action_handler_name)
 

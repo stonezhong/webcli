@@ -10,11 +10,11 @@ import oci
 import json
 import uuid
 
-from webcli2 import WebCLIEngine, ActionHandler
+from webcli2 import ActionHandler
 from oracle_spark_tools import OciApiKeyClientFactory
 from oracle_spark_tools.cli import CLIPackage, PackageType, CommandType
 from pydantic import ValidationError
-from webcli2.models import User
+from webcli2.core.data import User
 from webcli2.apilog import log_api_enter, log_api_exit
 
 def get_value(value:Optional[str]) -> Optional[str]:
@@ -95,10 +95,10 @@ class PySparkActionHandler(ActionHandler):
     listener_thread:Any                 # A thread that poll's kafka messages
     stream_client: Any                  # OCI stream client
 
-    def startup(self, webcli_engine:WebCLIEngine):
+    def startup(self, service:Any):
         log_prefix = "PySparkActionHandler.startup"
         log_api_enter(logger, log_prefix)
-        super().startup(webcli_engine)
+        super().startup(service)
 
         # start listener thread so we can receive kafka messages
         assert self.listener_thread is None

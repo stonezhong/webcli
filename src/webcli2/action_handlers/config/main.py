@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from webcli2 import ActionHandler
 from pydantic import ValidationError
-from webcli2.models import User
+from webcli2.core.data import User
 from webcli2.apilog import log_api_enter, log_api_exit
 
 # Config action handler

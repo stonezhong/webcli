@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 
-from webcli2 import WebCLIEngine, WebSocketConnectionManager
 from webcli2.core.data import Thread, User, Action, ThreadAction, ObjectNotFound
     
 from fastapi import WebSocket
@@ -90,14 +89,6 @@ service = WebCLIService(
     db_engine=engine,
     action_handlers = action_handlers
 ) 
-
-
-# webcli_engine = WebCLIEngine(
-#     users_home_dir = config.core.users_home_dir,
-#     db_engine = engine,
-#     wsc_manager=WebSocketConnectionManager(),
-#     action_handlers = action_handlers
-# )
 
 ##########################################################
 # Authenticate user

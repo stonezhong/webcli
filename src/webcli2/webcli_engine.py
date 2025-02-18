@@ -24,10 +24,6 @@ from sqlalchemy import Engine, select, delete
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import func
 
-from webcli2.db_models import DBAction, DBActionHandlerConfiguration, DBUser, DBThread, DBThreadAction
-from webcli2.models import Action, ActionHandlerConfiguration, User, JWTTokenPayload, Thread, ThreadAction
-from webcli2.models.apis import CreateThreadRequest, CreateActionRequest, PatchActionRequest, \
-    PatchThreadActionRequest, PatchThreadRequest
 from webcli2.websocket import WebSocketConnectionManager
 from webcli2.apilog import log_api_enter, log_api_exit
 from webcli2.webcli.output import CLIOutput
