@@ -74,9 +74,11 @@ def create_user(config:WebCLIApplicationConfig, args:argparse.Namespace):
     db_engine = create_engine(config.core.db_url)
     with Session(db_engine) as session:
         service = WebCLIService(
+            users_home_dir = config.core.users_home_dir,
+            resource_dir = config.core.resource_dir,
             public_key = config.core.public_key,
             private_key = config.core.private_key,
-            session = session,
+            db_engine=db_engine,
         )
         user = service.create_user(email=args.email, password=password1)
     print(f"User created, id={user.id}, email={user.email}")
