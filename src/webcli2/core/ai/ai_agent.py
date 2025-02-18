@@ -18,7 +18,7 @@ class AITool(ABC, Generic[T]):
         self.input_type = input_type
 
     @abstractmethod
-    def invoke(input:T):
+    def invoke(self, input:T):
         pass
 
 class AIAgent:

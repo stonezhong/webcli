@@ -44,7 +44,7 @@ class ActionHandler(ABC):
         # cli_handler.update_action(None, action_id:int, ...):
         pass # pragma: no cover
 
-    # # An action handler can get other action handler by name
-    # def get_action_handler(self, action_handler_name:str) -> Optional["ActionHandler"]:
-    #     return self.webcli_engine.action_handlers.get(action_handler_name)
+    # An action handler can get other action handler by name
+    def get_action_handler(self, action_handler_name:str) -> Optional["ActionHandler"]:
+        return self.service.action_handlers.get(action_handler_name)
 

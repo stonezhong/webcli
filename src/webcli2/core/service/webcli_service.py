@@ -511,3 +511,5 @@ class WebCLIService:
             await self.nm.unsubscribe(topic_name, client_id)
             logger.debug(f"{log_prefix}: client({client_id}) disconnected")
 
+    def get_action_handler(self, action_handler_name:str) -> Optional[action_handler.ActionHandler]:
+        return self.action_handlers.get(action_handler_name)

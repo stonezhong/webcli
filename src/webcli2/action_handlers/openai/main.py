@@ -17,7 +17,7 @@ from webcli2.config import WebCLIApplicationConfig, load_config
 from webcli2 import ActionHandler
 from webcli2.core.data import User
 from webcli2.apilog import log_api_enter, log_api_exit
-from webcli2.ai_agent import AIAgent, AITool
+from webcli2.core.ai import AIAgent, AITool
 
 from openai import OpenAI
 
@@ -120,6 +120,9 @@ class OpenAIActionHandler(ActionHandler):
             raise ValueError(f"filename cannot start with /")
         new_args = [ os.path.join(self.config.core.users_home_dir, str(user.id), filename) ] + list(args[1:])
         return open(*new_args, **kwargs)
+
+    def create_ai_agent(self) -> AIAgent:
+        return AIAgent(self)
 
     def parse_request(self, request:Any) -> Optional[OpenAIRequest]:
         log_prefix = "OpenAIActionHandler.parse_request"
@@ -256,14 +259,12 @@ class OpenAIActionHandler(ActionHandler):
                     user = user
                 )
 
-        # def get_ai_agent() -> AIAgent:
-        #     return AIAgent(self)
-
         run_code(
             oatc,
             {
                 "cli_print": cli_print,
                 "cli_open": self.cli_open,
+                "create_ai_agent": self.create_ai_agent
             }, 
             openai_request.command_text
         )

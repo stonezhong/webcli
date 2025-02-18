@@ -71,7 +71,7 @@ class ConfigHandler(ActionHandler):
                 user = user
             )
             log_api_exit(logger, log_prefix)
-            return
+            return True
         
         if config_request.action == "set":
             logger.debug(f"{log_prefix}: set config")
