@@ -62,7 +62,7 @@ class JIRATool(AITool):
     def __init__(self, *, name:str):
         super().__init__(name=name, description="Execute JQL Query", input_type=JQLInput)
         options = {"server": "https://jira.oci.oraclecorp.com"}
-        API_TOKEN = "MjM5MzUzNTQ2MDIyOsVyec/BnHjkddDjSKfakkaFuxfC"
+        API_TOKEN = "***"
         self.jira_client = JIRA(options, token_auth=API_TOKEN)
 
     def invoke(self, input:JQLInput):
