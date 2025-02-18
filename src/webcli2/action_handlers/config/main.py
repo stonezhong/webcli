@@ -52,34 +52,23 @@ class ConfigHandler(ActionHandler):
     # the "command" field is text
     # if frist line is %bash%, then rest is bash code
     # if first line is %pyspark%, then rest is pyspark code
-    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict) -> bool:
         log_prefix = "ConfigHandler.handle"
         log_api_enter(logger, log_prefix)
 
         config_request = self.parse_request(request)
         if config_request.action == "get":
             logger.debug(f"{log_prefix}: get config")
-            ahc = self.webcli_engine.get_action_handler_configuration(
-                config_request.action_handler_name,
-                user.id
+            config = self.service.get_action_handler_user_config(
+                action_handler_name = config_request.action_handler_name,
+                user = user
             )
-            if ahc is None:
-                config_response = ConfigResponse(
-                    content=None,
-                    succeeded=False,
-                    error_message = f"config for \"{config_request.action_handler_name}\" does not exist"
-                )
-            else:
-                config_response = ConfigResponse(
-                    content=json.dumps(ahc.configuration, indent=4),
-                    succeeded=True,
-                    error_message = None
-                )
-            self.webcli_engine.complete_action(action_id, config_response.model_dump(mode="json"))
-            self.webcli_engine.notify_websockt_client(
-                config_request.client_id, 
-                action_id, 
-                config_response
+
+            self.service.append_response_to_action(
+                action_id,
+                mime = "text/plain",
+                text_content = json.dumps(config, indent=4),
+                user = user
             )
             log_api_exit(logger, log_prefix)
             return
@@ -88,29 +77,24 @@ class ConfigHandler(ActionHandler):
             logger.debug(f"{log_prefix}: set config")
             try:
                 json_content = json.loads(config_request.content)
-                ahc = self.webcli_engine.set_action_handler_configuration(
-                    config_request.action_handler_name,
-                    user.id,
-                    json_content
+                self.service.set_action_handler_user_config(
+                    action_handler_name = config_request.action_handler_name,
+                    user = user, 
+                    config = json_content
                 )
-                config_response = ConfigResponse(
-                    content=json.dumps(ahc.configuration, indent=4),
-                    succeeded=True, 
-                    error_message = None
+                self.service.append_response_to_action(
+                    action_id,
+                    mime = "text/plain",
+                    text_content = json.dumps(json_content, indent=4),
+                    user = user
                 )
             except json.decoder.JSONDecodeError:
-                config_response = ConfigResponse(
-                    content=None,
-                    succeeded=False,
-                    error_message = f"config should be JSON string"
+                self.service.append_response_to_action(
+                    action_id,
+                    mime = "text/plain",
+                    text_content = "Config is not in JSON format",
+                    user = user
                 )
-            
             logger.debug(f"{log_prefix}: action has been handled successfully, action_id={action_id}")
-            self.webcli_engine.complete_action(action_id, config_response.model_dump(mode="json"))
-            self.webcli_engine.notify_websockt_client(
-                config_request.client_id, 
-                action_id, 
-                config_response
-            )
             log_api_exit(logger, log_prefix)
-            return
+            return True

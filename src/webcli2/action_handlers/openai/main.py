@@ -143,9 +143,9 @@ class OpenAIActionHandler(ActionHandler):
         log_api_exit(logger, log_prefix)
         return r
 
-    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict) -> bool:
         try:
-            self._handle(action_id, request, user, action_handler_user_config)
+            return self._handle(action_id, request, user, action_handler_user_config)
         except Exception:
             logger.exception("OpenAIActionHandler.handle: failed to handle request")
 
@@ -178,6 +178,7 @@ class OpenAIActionHandler(ActionHandler):
         )
         
         log_api_exit(logger, log_prefix)
+        return True
 
     def handle_python(
         self, 
@@ -267,6 +268,7 @@ class OpenAIActionHandler(ActionHandler):
             openai_request.command_text
         )
         log_api_exit(logger, log_prefix)
+        return True
 
     def _handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
         log_prefix = "OpenAIActionHandler.handle"
@@ -282,9 +284,10 @@ class OpenAIActionHandler(ActionHandler):
         openai_request = self.parse_request(request)
 
         if openai_request.type == "openai":
-            self.handle_openai(action_id, openai_request, user, action_handler_user_config, oatc=oatc)
+            ret = self.handle_openai(action_id, openai_request, user, action_handler_user_config, oatc=oatc)
         elif openai_request.type == "python":
-            self.handle_python(action_id, openai_request, user, action_handler_user_config, oatc=oatc)
+            ret = self.handle_python(action_id, openai_request, user, action_handler_user_config, oatc=oatc)
 
         logger.debug(f"{log_prefix}: action has been handled successfully, action_id={action_id}")
         log_api_exit(logger, log_prefix)
+        return ret

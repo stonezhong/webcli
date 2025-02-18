@@ -445,7 +445,7 @@ class DataAccessor:
         self,
         *,
         action_handler_name:str,
-        user:User 
+        user:User
     ) -> dict:
         """Get user configuration for a action handler.
         """
@@ -460,6 +460,34 @@ class DataAccessor:
             return {}
         return db_ahc.configuration
 
+    def set_action_handler_user_config(
+        self,
+        *,
+        action_handler_name:str,
+        user:User,
+        config:dict
+    ):
+        """Set user configuration for a action handler.
+        """
+        db_ahc = self.session.scalars(
+            select(DBActionHandlerConfiguration)\
+                .where(DBActionHandlerConfiguration.user_id == user.id)\
+                .where(DBActionHandlerConfiguration.action_handler_name == action_handler_name)
+        ).one_or_none()
+        if db_ahc is None:
+            db_ahc = DBActionHandlerConfiguration(
+                action_handler_name = action_handler_name,
+                user_id = user.id,
+                created_at = get_utc_now(),
+                configuration = config 
+            )
+        else:
+            db_ahc.configuration = config
+            db_ahc.updated_at = get_utc_now()
+
+        self.session.add(db_ahc)
+        self.session.commit()
+
     def get_thread_ids_for_action(self, action_id:int) -> List[int]:
         """Get list of threads that has this action.
 
@@ -470,3 +498,11 @@ class DataAccessor:
             select(DBThreadAction)\
                 .where(DBThreadAction.action_id == action_id)
         )]
+
+    def get_action_user(self, action_id:int) -> Optional[User]:
+        """Get user for the action.
+        """
+        db_action = self.session.get(DBAction, action_id)
+        if db_action is None:
+            return None
+        return User.from_db(db_action.user)

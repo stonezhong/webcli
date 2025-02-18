@@ -148,8 +148,9 @@ class WebCLIService:
         The purpose is to capture exception and log
         """
         try:
-            action_handler(action_id, request, user, action_handler_user_config)
-            self.complete_action(action_id, user=user)
+            ret = action_handler(action_id, request, user, action_handler_user_config)
+            if ret:
+                self.complete_action(action_id, user=user)
             logger.debug(f"Action handler {action_handler} successfully handled an action({action_id})")
         except Exception:
             logger.exception(f"Action handler {action_handler} failed when handing action({action_id})")
@@ -420,13 +421,34 @@ class WebCLIService:
         self,
         *,
         action_handler_name:str,
-        user:User 
+        user:User
     ) -> dict:
         """Get user configuration for a action handler.
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
             return da.get_action_handler_user_config(action_handler_name=action_handler_name, user=user)
+    
+
+    def set_action_handler_user_config(
+        self,
+        *,
+        action_handler_name:str,
+        user:User,
+        config:dict
+    ):
+        """Set user configuration for a action handler.
+        """
+        with Session(self.db_engine) as session:
+            da = DataAccessor(session)
+            return da.set_action_handler_user_config(action_handler_name=action_handler_name, user=user, config=config)
+
+    def get_action_user(self, action_id:int) -> Optional[User]:
+        """Get user for the action.
+        """
+        with Session(self.db_engine) as session:
+            da = DataAccessor(session)
+            return da.get_action_user(action_id)
 
     #######################################################################
     # This is called by web socket endpoint from fastapi

@@ -114,12 +114,12 @@ class PySparkActionHandler(ActionHandler):
 
         assert self.listener_thread is not None
         assert self.require_shutdown == False
-        assert self.webcli_engine is not None
+        assert self.service is not None
 
         # ask listener to shutdown and then wait for it to shutdown
         self.require_shutdown = True
         self.listener_thread.join()
-        self.webcli_engine = None
+        self.service = None
 
         logger.info(f"{log_prefix}: PySparkActionHandler has been shutdown")
         log_api_exit(logger, log_prefix)
@@ -177,17 +177,18 @@ class PySparkActionHandler(ActionHandler):
                             # this CLI package is associated with an action
                             # let's complete the action
                             logger.debug(f"{log_prefix}: action has been handled successfully, action_id={sequence}")
-                            spark_response = SparkResponse(type="spark-cli", cli_package=cli_package)
-                            self.webcli_engine.complete_action(
-                                sequence, 
-                                spark_response.model_dump(mode="json")
-                            )
-                            # notify browser via web socket
-                            self.webcli_engine.notify_websockt_client(
-                                cli_package.client_id, 
-                                sequence, 
-                                spark_response
-                            )
+
+                            user = self.service.get_action_user(sequence)
+                            if user is None:
+                                logger.debug(f"{log_prefix}: cannot find user for action({sequence})")
+                            else:
+                                self.service.append_response_to_action(
+                                    sequence,
+                                    mime = "text/plain",
+                                    text_content = cli_package.reply_message,
+                                    user = user
+                                )
+                                self.service.complete_action(sequence, user=user)
                         else:
                             # this CLI package is not associated with an action
                             slot = PENDING_CLI_REQUEST.get(sequence)
@@ -272,6 +273,7 @@ class PySparkActionHandler(ActionHandler):
             assert cli_package is not None
             self.send_cli_package(cli_package)
             log_api_exit(logger, log_prefix)
+            return False
         except:
             logger.debug(f"{log_prefix}: exception captured", exc_info=True)
 

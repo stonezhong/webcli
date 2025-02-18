@@ -30,7 +30,13 @@ class ActionHandler(ABC):
         pass
 
     @abstractmethod
-    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict):
+    def handle(self, action_id:int, request:Any, user:User, action_handler_user_config:dict) -> bool:
+        ###################################################################################################
+        # If return is True, it means the aciton is completed
+        # If the return is False, it means the action is still pending, the action handler may queue
+        # a taska and work on the action in the background
+        ###################################################################################################
+
         # to complete the action, you can call
         # cli_handler.complete_action(None, action_id, ...)
         #
