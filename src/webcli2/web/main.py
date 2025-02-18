@@ -84,6 +84,7 @@ engine = create_engine(config.core.db_url)
 
 service = WebCLIService(
     users_home_dir = config.core.users_home_dir,
+    resource_dir = config.core.resource_dir,
     public_key=config.core.public_key,
     private_key=config.core.private_key,
     db_engine=engine,

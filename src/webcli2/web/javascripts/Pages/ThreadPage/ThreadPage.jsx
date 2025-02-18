@@ -339,7 +339,7 @@ export class ThreadPage extends React.Component {
         });
     }
 
-    renderResponseChunk(response_chunk) {
+    renderResponseChunk(action, response_chunk) {
         if (response_chunk.mime === "text/html") {
             return <div key={response_chunk.id} dangerouslySetInnerHTML={{ __html: response_chunk.text_content }} />;
         }
@@ -351,6 +351,10 @@ export class ThreadPage extends React.Component {
         }
         if (response_chunk.mime === "text/plain") {
             return <pre key={response_chunk.id}>{response_chunk.text_content}</pre>;
+        }
+        if (response_chunk.mime === "image/png") {
+            const url = `/resources/${action.id}/${response_chunk.id}.png`
+            return <img key={response_chunk.id} src={url}/>;
         }
 
         // for anything unknown, show text
@@ -382,7 +386,7 @@ export class ThreadPage extends React.Component {
          * }
          */
         return [
-            ...action.response_chunks.map(response_chunk => this.renderResponseChunk(response_chunk)),
+            ...action.response_chunks.map(response_chunk => this.renderResponseChunk(action, response_chunk)),
             action.is_completed?null:<Spinner key="loading" animation="border" role="status">
                 <span className="visually-hidden">Loading...</span>
             </Spinner>

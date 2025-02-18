@@ -104,11 +104,9 @@ class OpenAIRequest(BaseModel):
     args: str
 
 class OpenAIActionHandler(ActionHandler):
-    client: OpenAI
     config: WebCLIApplicationConfig
 
-    def __init__(self, *, api_key:str):
-        self.client = OpenAI(api_key=api_key)
+    def __init__(self):
         self.config = load_config()
         os.makedirs(self.config.core.resource_dir, exist_ok=True)
 
@@ -122,7 +120,9 @@ class OpenAIActionHandler(ActionHandler):
         return open(*new_args, **kwargs)
 
     def create_ai_agent(self) -> AIAgent:
-        return AIAgent(self)
+        openai_thread_context:OpenAITheradContext = openai_thread_context_var.get()
+        user = openai_thread_context.user
+        return AIAgent(self, user)
 
     def parse_request(self, request:Any) -> Optional[OpenAIRequest]:
         log_prefix = "OpenAIActionHandler.parse_request"
@@ -163,8 +163,28 @@ class OpenAIActionHandler(ActionHandler):
     ):
         # TODO: in case of exception, absorb the error and surface the error in openai_response
         log_prefix = "OpenAIActionHandler.handle_openai"
+
+        api_key = action_handler_user_config.get("api_key")
+        if not api_key:
+            content = """
+api_key must be provide, you can run 
+%config% set openai
+{
+    "api_key": "YOUR_OPENAI_API_KEY_HERE"
+}
+"""
+            self.service.append_response_to_action(
+                action_id,
+                mime = "text/plain",
+                text_content = content,
+                user = user
+            )
+            return
+        
+        client = OpenAI(api_key=api_key)
+
         log_api_enter(logger, log_prefix)
-        completion = self.client.chat.completions.create(
+        completion = client.chat.completions.create(
             # model="gpt-3.5-turbo",
             # model="gpt-4",
             model="gpt-4o",

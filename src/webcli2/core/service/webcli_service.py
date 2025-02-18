@@ -10,6 +10,7 @@ from asyncio import get_event_loop, AbstractEventLoop, run_coroutine_threadsafe
 from copy import copy
 import json
 import time
+import os
 
 from sqlalchemy.orm import Session
 import bcrypt
@@ -69,6 +70,7 @@ class WebCLIService:
     public_key:str                                  # for JWT
     private_key:str                                 # for JWT
     users_home_dir: str                             # The parent directory for all user's home dir
+    resource_dir:str                                # The directory to store all binary_output for action response chunks
     db_engine: Engine                               # SQLAlchemy engine
     executor: Optional[ThreadPoolExecutor]          # A thread pool
     event_loop: Optional[AbstractEventLoop]         # The current main loop
@@ -79,6 +81,7 @@ class WebCLIService:
         self, 
         *, 
         users_home_dir:str,
+        resource_dir:str,
         public_key:str, 
         private_key:str, 
         db_engine:Engine,
@@ -87,6 +90,7 @@ class WebCLIService:
         self.public_key = public_key
         self.private_key = private_key
         self.users_home_dir = users_home_dir
+        self.resource_dir = resource_dir
         self.db_engine = db_engine
         self.executor = None
         self.event_loop = None
@@ -376,6 +380,22 @@ class WebCLIService:
                 binary_content=binary_content, 
                 user=user
             )
+
+            # For binary content, if we know the mime type, we will save the content
+            # so it can be referenced by output chunk
+            if binary_content is not None:
+                if mime == "image/png":
+                    fileext = "png"
+                else:
+                    fileext = None
+                
+                if fileext is not None:
+                    resource_dir = os.path.join(self.resource_dir, str(action_id))
+                    os.makedirs(resource_dir, exist_ok=True)
+                    filename = os.path.join(resource_dir, f"{str(action_response_chunk.id)}.{fileext}")
+                    with open(filename, "wb") as f:
+                        f.write(binary_content)
+
             thread_ids = da.get_thread_ids_for_action(action_id)
             event = {
                 "type": "action-response-chunk",

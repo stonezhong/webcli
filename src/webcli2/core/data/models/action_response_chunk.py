@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from webcli2.core.data.db_models import DBActionResponseChunk
 
 #############################################################################
@@ -15,7 +15,7 @@ class ActionResponseChunk(BaseModel):
     order: int
     mime: str
     text_content: Optional[str] = None
-    binary_content: Optional[bytes] = None
+    binary_content: Optional[bytes] = Field(exclude=True, default=None)
 
     @classmethod
     def from_db(cls, db_action_response_chunk:DBActionResponseChunk) -> "ActionResponseChunk":
