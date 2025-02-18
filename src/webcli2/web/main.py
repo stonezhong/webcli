@@ -78,7 +78,7 @@ def config_action_handlers():
 config_action_handlers()
 
 ##########################################################
-# create a WebCLIEngine
+# create Service instance
 ##########################################################
 engine = create_engine(config.core.db_url)
 

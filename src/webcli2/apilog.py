@@ -1,10 +1,4 @@
 IGNORED_PREFIX = set([
-    "WebCLIEngine.__init__",
-    "WebCLIEngine.startup",
-    "WebCLIEngine.shutdown",
-    "WebCLIEngine:async_start_action",
-    "WebCLIEngine.start_action_unsafe",
-    "WebCLIEngine:complete_action_unsafe",
     "PySparkActionHandler.startup",
     "PySparkActionHandler.listener",
     "ClientManager.publish_notification",
