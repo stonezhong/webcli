@@ -74,12 +74,6 @@ core:
         mermaid:
             module_name: webcli2.action_handlers.mermaid
             class_name: MermaidHandler
-        pyspark:
-            module_name: webcli2.action_handlers.pyspark
-            class_name: PySparkActionHandler
-            config:
-                stream_id: ocid1.stream.oc1.iad.amaaaaaazzric4ia2zc6kt7opunq4lmqkd3fvlzx7vfmpassaclgva5ytqva
-                kafka_consumer_group_name: cli-action-handler
         openai:
             module_name: webcli2.action_handlers.openai
             class_name: OpenAIActionHandler
@@ -144,5 +138,17 @@ webcli init-db
 Now create first user account
 ```bash
 webcli create-user --email xyz@abc.com
-
+# enter password
 ```
+
+Now let's start server
+```bash
+webcli start
+```
+
+Let's do a test, open your browser, open http://localhost:8000/threads, you can login and Click "Create New Thread", then you can type
+```
+%python%
+print("Hello")
+```
+hit button "Submit" to testit
