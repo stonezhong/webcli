@@ -1,17 +1,19 @@
 # Index
-* core
-    * data
-        * [db_models](#db_models)
-        * [models](#models)
-        * [DataAccessor](#)
-    * [service](#service)
-        * [WebCLIService](#webcliservice)
+* Python Modules
+    * core
+        * data
+            * [db_models](#db_models)
+            * [models](#models)
+            * [DataAccessor](#)
+        * [service](#service)
+            * [WebCLIService](#webcliservice)
+    * [cli](#cli)
 
 
-
-# core
-## data
-### db_models
+# Python Modules
+## core
+### data
+#### db_models
 These are SQLAlchemy data models.
 
 | Class                           | Description                              |
@@ -91,7 +93,7 @@ erDiagram
     
 ```
 
-### models
+#### models
 These are Pydandic models.
 
 | Class                           | Description                              |
@@ -103,7 +105,7 @@ These are Pydandic models.
 | ThreadAction                    | Represent a thread has an action         |
 | ActionHandlerConfiguration      | User configuration for a action handler  |
 
-### DataAccessor
+#### DataAccessor
 This class provide the Data Accessing Layer. Here are methods
 
 | Method                          | Description                              |
@@ -127,11 +129,12 @@ This class provide the Data Accessing Layer. Here are methods
 | get_action_handler_user_config  | get user config for action handler |
 | set_action_handler_user_config  | set user config for action handler |
 | get_thread_ids_for_action       | Given a action, find all thread that has the action, retrun the list of thread IDs |
+| create_all_tables               | Create all database tables |
 
-## Service
+### Service
 This is the service layer module.
 
-### WebCLIService
+#### WebCLIService
 This class provide Service API's for Web CLI. Here are methods
 
 | Method                          | Description                              |
@@ -157,3 +160,12 @@ This class provide Service API's for Web CLI. Here are methods
 | get_action_user                 | Given an action, return the user of the action |
 | websocket_endpoint              | Web Socket Hanlder |
 | get_action_handler              | Get registered action handler by name |
+| create_all_tables               | Create all database tables |
+
+## cli
+| Method                          | Description                              |
+| ------------------------------- | ---------------------------------------- |
+| webcli                          | entry method for Python Package CLI      |
+| webcli_internal                 | internal entry function for web cli      |
+
+`webcli` initializing logging then pass control to `webcli_internal`, this is to make sure logging are initialized before we import any required python packages.
