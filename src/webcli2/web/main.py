@@ -3,26 +3,24 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import List, Union, Optional, Dict
+from typing import List, Union, Optional
 import os
-import importlib
 import uuid
 
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi import FastAPI, Request, HTTPException, Form, Depends
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 
+from webcli2.service_loader import load_webcli_service
 from webcli2.core.data import Thread, User, Action, ThreadAction, ObjectNotFound
     
 from fastapi import WebSocket
 
-from webcli2.config import load_config, ActionHandlerInfo
-from webcli2.core.service import WebCLIService, InvalidJWTTOken, NoHandler
+from webcli2.config import load_config
+from webcli2.core.service import InvalidJWTTOken, NoHandler
 from .libs.tools import redirect
 
 class PatchThreadActionRequest(BaseModel):
@@ -51,45 +49,7 @@ class PatchThreadRequest(BaseModel):
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
 
 config = load_config()
-
-##########################################################
-# Loading all action handlers
-# We will install ConfigHandler anyway
-##########################################################
-action_handlers = {
-}
-
-def config_action_handlers():
-    action_handlers_config:Dict[str, ActionHandlerInfo] = {
-        "config": ActionHandlerInfo(
-            module_name="webcli2.action_handlers.config",
-            class_name="ConfigHandler",
-            config = {}
-        )
-    }
-    action_handlers_config.update(config.core.action_handlers)
-    for action_handler_name, action_handler_info in action_handlers_config.items():
-        logger.info(f"Loading action handler: name={action_handler_name}, module={action_handler_info.module_name}, class={action_handler_info.class_name}")
-        module = importlib.import_module(action_handler_info.module_name)
-        klass = getattr(module, action_handler_info.class_name)
-        action_handler = klass(**action_handler_info.config)
-        action_handlers[action_handler_name] = action_handler
-    logger.info(f"All action handlers are loaded")
-config_action_handlers()
-
-##########################################################
-# create Service instance
-##########################################################
-engine = create_engine(config.core.db_url)
-
-service = WebCLIService(
-    users_home_dir = config.core.users_home_dir,
-    resource_dir = config.core.resource_dir,
-    public_key=config.core.public_key,
-    private_key=config.core.private_key,
-    db_engine=engine,
-    action_handlers = action_handlers
-) 
+service = load_webcli_service(config)
 
 ##########################################################
 # Authenticate user

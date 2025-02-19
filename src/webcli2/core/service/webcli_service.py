@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine
 from fastapi import WebSocket, WebSocketDisconnect
 
-from webcli2.core.data import User, Thread, Action, DataAccessor, ThreadAction, ActionResponseChunk
+from webcli2.core.data import User, Thread, Action, DataAccessor, ThreadAction, ActionResponseChunk, create_all_tables as cat
 import webcli2.action_handlers.action_handler as action_handler
 from .notifications import NotificationManager, pop_notification, Notification
 
@@ -533,3 +533,6 @@ class WebCLIService:
 
     def get_action_handler(self, action_handler_name:str) -> Optional[action_handler.ActionHandler]:
         return self.action_handlers.get(action_handler_name)
+
+    def create_all_tables(self):
+        return cat(self.db_engine)
