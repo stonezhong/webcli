@@ -4,6 +4,9 @@
         * [db_models](#db_models)
         * [models](#models)
         * [DataAccessor](#)
+    * [service](#service)
+        * [WebCLIService](#webcliservice)
+
 
 
 # core
@@ -103,7 +106,7 @@ These are Pydandic models.
 ### DataAccessor
 This class provide the Data Accessing Layer. Here are methods
 
-| Class                           | Description                              |
+| Method                          | Description                              |
 | ------------------------------- | ---------------------------------------- |
 | create_user                     | Create a new user                        |
 | get_user                        | Retrieve a user by id                    |
@@ -124,3 +127,33 @@ This class provide the Data Accessing Layer. Here are methods
 | get_action_handler_user_config  | get user config for action handler |
 | set_action_handler_user_config  | set user config for action handler |
 | get_thread_ids_for_action       | Given a action, find all thread that has the action, retrun the list of thread IDs |
+
+## Service
+This is the service layer module.
+
+### WebCLIService
+This class provide Service API's for Web CLI. Here are methods
+
+| Method                          | Description                              |
+| ------------------------------- | ---------------------------------------- |
+| create_user                     | Create a new user                        |
+| get_user_from_jwt_token         | Given a JWT token, return the user this JWT token represents |
+| login_user                      | Authenticate user with email and password |
+| generate_user_jwt_token         | Generate a JWT token for a user          |
+| list_threads                    | List all thread a user created           |
+| create_thread                   | Create a new thread                      |
+| get_thread                      | Retrieve a thread by id                  |
+| patch_thread                    | Update a thread, for title, description  |
+| create_thread_action            | Create an action and put the action into a thread |
+| delete_thread                   | Delete a thread, remove all actions from the thread |
+| remove_action_from_thread       | Remove an action from thread, it does not delete the aciton |
+| patch_action                    | Update an action, for title              |
+| append_action_to_thread         | Put the action as the last action of a thread |
+| complete_action                 | Set an action to completed (aka, is_completed set to True for the action) |
+| append_response_to_action       | Append a response chunk to an action     |
+| patch_thread_action             | update ThreadAction's show_question, show_answer |
+| get_action_handler_user_config  | get user config for action handler |
+| set_action_handler_user_config  | set user config for action handler |
+| get_action_user                 | Given an action, return the user of the action |
+| websocket_endpoint              | Web Socket Hanlder |
+| get_action_handler              | Get registered action handler by name |
