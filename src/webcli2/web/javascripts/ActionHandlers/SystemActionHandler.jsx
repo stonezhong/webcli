@@ -4,20 +4,16 @@ import ReactMarkdown from "react-markdown";
 
 
 /********************************************************************************
- * This action handler allows you to send question to OpenAI
- * 
- * syntax
- * %openai%
- * question
+ * The System Action Handler client
  * 
  */
-export default class MermaidActionHandler extends BaseActionHandler {
+export default class SystemActionHandler extends BaseActionHandler {
     constructor(clientId) {
         super(clientId);
     }
 
     getName() {
-        return "openai";
+        return "system";
     }
 
     getActionRequestFromText(text) {
@@ -29,7 +25,7 @@ export default class MermaidActionHandler extends BaseActionHandler {
         const title = lines[0].trim();
         const verb = title.split(" ")[0];
         const args = title.slice(verb.length).trim();
-        if (!["%openai%"].includes(verb)) {
+        if (!["%markdown%", "%html%", "%mermaid%", "%config%", "%python%"].includes(verb)) {
             return null;
         }
 

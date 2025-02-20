@@ -28,10 +28,4 @@ export default class PySparkActionHandler extends BaseActionHandler {
 
         return null;
     }
-
-    renderAction(action) {
-        return <pre>
-            {action.response.cli_package.reply_message}
-        </pre>;
-    }
 }

@@ -249,8 +249,7 @@ class EditableText extends React.Component {
  * sendAction                   Create a new action
  * getActionRequestFromText     Try to handle input text using registered action handlers
  * connect                      Connect to web socket
- * onActionCompleted            called when an action is completed
- * 
+  * 
  * -------------------------------------------------------------------------------------------------------------------
  * update action title          It only update the action title (a single action), it does not resync the entire thread
  * create action                It only add the new action to the bottom, it does not resync the entire thread
@@ -593,22 +592,6 @@ export class ThreadPage extends React.Component {
 
     }
 
-    onActionCompleted = async (actionId, response) => {
-        await updateMatchingItemsFromReactStateAsync({
-            element: this,
-            stateFieldName:"threadActionWrappers",
-            shouldUpdate: async threadActionWrapper => threadActionWrapper.threadAction.action.id === actionId,
-            doUpdate: async threadActionWrapper => {
-                threadActionWrapper.threadAction.action.response = response;
-            }
-        });
-    }
-
-    /*******************
-     * Connecto to web socket
-     * onActionCompleted: called upon success
-     * 
-     */
     connect() {
         logger.info("ThreadPage.connect: enter");
         if (window.webcli_socket) {
