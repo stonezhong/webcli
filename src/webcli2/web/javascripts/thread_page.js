@@ -1,9 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThreadPage } from './Pages/ThreadPage';
-import MermaidActionHandler from "./ActionHandlers/MermaidActionHandler";
+import SystemActionHandler from "./ActionHandlers/SystemActionHandler";
 import PySparkActionHandler from "./ActionHandlers/PySparkActionHandler";
-import ConfigActionHandler from './ActionHandlers/ConfigActionHandler';
 import OpenAIActionHandler from './ActionHandlers/OpenAIActionHandler';
 
 
@@ -17,10 +16,7 @@ const actionHandlerMap = new Map();
 var actionHandler = null;
 
 // initialize all action handlers
-actionHandler = new ConfigActionHandler(client_id);
-actionHandlerMap.set(actionHandler.getName(), actionHandler);
-
-actionHandler = new MermaidActionHandler(client_id);
+actionHandler = new SystemActionHandler(client_id);
 actionHandlerMap.set(actionHandler.getName(), actionHandler);
 
 actionHandler = new PySparkActionHandler(client_id);

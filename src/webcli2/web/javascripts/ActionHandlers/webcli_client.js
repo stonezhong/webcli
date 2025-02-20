@@ -27,21 +27,4 @@ export class BaseActionHandler {
     getActionRequestFromText(text) {
         throw new Exception("derived class to implement");
     }
-
-    /*********************************************
-     * Render an action
-     */
-    renderAction(action) {
-        throw new Exception("derived class to implement");
-    }
-
-    /*********************************************
-     * Called when an action is completed
-     * action:   The action object. An Action instance, but response is null
-     * response: The response from server
-     */
-    async onActionCompleted(action, response) {
-        // derived class can override this behavior if needed
-        action.response = response;
-    }
 }
