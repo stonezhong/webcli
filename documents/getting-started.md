@@ -169,3 +169,6 @@ print("Hello")
 ```
 
 You will see "Hello" gets printed on the page, if you see that, your setup is successful.
+
+# Experiment with AI Agent
+Please checkout examples [here](howtos/ai-agent.md) to run AI Agent.

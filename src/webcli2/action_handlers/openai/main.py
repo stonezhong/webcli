@@ -9,8 +9,6 @@ from pydantic import BaseModel, ValidationError
 from webcli2.config import WebCLIApplicationConfig, load_config
 from webcli2 import ActionHandler
 from webcli2.core.data import User
-from webcli2.apilog import log_api_enter, log_api_exit
-from webcli2.core.ai import AIAgent, AITool
 
 from openai import OpenAI
 
@@ -26,12 +24,6 @@ class OpenAIActionHandler(ActionHandler):
     def __init__(self):
         self.config = load_config()
         os.makedirs(self.config.core.resource_dir, exist_ok=True)
-
-
-    # def create_ai_agent(self) -> AIAgent:
-    #     openai_thread_context:OpenAITheradContext = openai_thread_context_var.get()
-    #     user = openai_thread_context.user
-    #     return AIAgent(self, user)
 
     def parse_request(self, request:Any) -> Optional[OpenAIRequest]:
         try:
