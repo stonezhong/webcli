@@ -181,12 +181,12 @@ class SystemActionHandler(ActionHandler):
         try:
             parser = argparse.ArgumentParser(description='', exit_on_error=False)
             parser.add_argument(
-                "action-type", type=str, help="Specify action type",
+                "action_type", type=str, help="Specify action type",
                 choices=['set', 'get'],
                 nargs=1
             )
             parser.add_argument(
-                "action-handler-name", type=str, help="Specify action handler name",
+                "action_handler_name", type=str, help="Specify action handler name",
                 nargs=1
             )
             args = parser.parse_args(shlex.split(parsed_request.args))
@@ -232,7 +232,7 @@ class SystemActionHandler(ActionHandler):
                 return
 
             self.service.set_action_handler_user_config(
-                action_handler_name = args.action_handler_name,
+                action_handler_name = action_handler_name,
                 user = user, 
                 config = json_content
             )

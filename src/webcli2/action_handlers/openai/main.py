@@ -75,7 +75,7 @@ OpenAI api_key must be provide, you can run
                 user = user
             )
             logger.warning(f"OpenAIActionHandler.handle: unable to handle, client does not have OpenAI api_key, request={request}, action_id={action_id}")
-            return
+            return True
         
         client = OpenAI(api_key=api_key)
 
