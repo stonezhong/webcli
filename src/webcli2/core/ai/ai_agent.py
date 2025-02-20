@@ -1,7 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Any, List, Dict, TypeVar, Generic, Type
+from typing import Any, List, Dict, TypeVar, Generic, Type, Callable
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
 import json
@@ -11,47 +11,44 @@ from webcli2.core.data import User
 
 T = TypeVar('T', bound=BaseModel)
 
-class AITool(ABC, Generic[T]):
-    name:str
-    description:str
-    input_type: Type[T]
 
-    def __init__(self, *, name:str, description:str, input_type:Type[T]):
+class ToolInfo[T]:
+    input_type: Type[T]
+    name: str
+    description:str
+    tool: Callable[[T], None]
+
+    def __init__(self, *, input_type: Type[T], name:str, description:str, tool: Callable[[T], None]):
+        self.input_type = input_type
         self.name = name
         self.description = description
-        self.input_type = input_type
+        self.tool = tool
 
-    @abstractmethod
-    def invoke(self, input:T):
-        pass
 
 class AIAgent:
-    tools: List[dict]
+    tool_info_dict: Dict[str, ToolInfo]
     user: User
     openai_handler:Any
 
+    def aitool(self, *, description:str):
+        def get_ai_tool(tool:Callable[[T], None]):
+            ti = ToolInfo(
+                input_type=tool.__annotations__["input"],
+                name = tool.__name__,
+                description = description,
+                tool = tool
+            )
+            self.tool_info_dict[tool.__name__] = ti
+            return tool
+        return get_ai_tool
+
     def __init__(self, openai_handler:Any, user:User):
         self.openai_handler = openai_handler
-        self.tools = []
-        self.tool_dict: Dict[str, AITool] = {} # key is the tool name, value is AITool
+        self.tool_info_dict = {}
         self.user = user
 
-    # Register a AI Tool
-    def register_tool(self, tool:AITool):
-        t = {
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.input_type.model_json_schema(),
-                "strict": True
-            }
-        }
-        self.tools.append(t)
-        self.tool_dict[tool.name] = tool
-
-    def ask_ai(self, question:str):
-        from webcli2.action_handlers.openai.main import cli_print
+    def run(self, question:str):
+        from webcli2.action_handlers.system import cli_print
 
         api_key = self.openai_handler.service.get_action_handler_user_config(
             action_handler_name="openai", 
@@ -65,9 +62,23 @@ class AIAgent:
 }
 """
             cli_print(content, mime="text/plain")
-            raise ValueError("No API KEY for openai SDK")
+            return
+        
 
         client = OpenAI(api_key=api_key)
+        tools = []
+        for _, ti in self.tool_info_dict.items():
+            t = {
+                "type": "function",
+                "function": {
+                    "name": ti.name,
+                    "description": ti.description,
+                    "parameters": ti.input_type.model_json_schema(),
+                    "strict": True
+                }
+            }
+            tools.append(t)
+
         completion = client.chat.completions.create(
             # model="gpt-3.5-turbo",
             # model="gpt-4",
@@ -76,14 +87,18 @@ class AIAgent:
             messages=[
                 {"role": "user", "content": question}
             ],
-            tools=self.tools
+            tools=tools
         )
+
+        for tc in completion.choices[0].message.tool_calls:
+            tool = self.tool_info_dict.get(tc.function.name)
+            input = tool.input_type.model_validate(json.loads(tc.function.arguments))
+            tool.tool(input)
         return completion
     
-    def process_tools_response(self, completion):
-        for tc in completion.choices[0].message.tool_calls:
-            ai_tool = self.tool_dict.get(tc.function.name)
-            if ai_tool is None:
-                continue
-            input = ai_tool.input_type.model_validate(json.loads(tc.function.arguments))
-            ai_tool.invoke(input)
+
+def create_ai_agent():
+    from webcli2.action_handlers.system import get_python_thread_context
+    thread_context = get_python_thread_context()
+    openai_handler = thread_context.service.get_action_handler("openai")
+    return AIAgent(openai_handler, thread_context.user)

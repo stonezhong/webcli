@@ -20,7 +20,7 @@ from webcli2 import ActionHandler
 from pydantic import ValidationError
 from webcli2.core.data import User
 
-class OpenAITheradContext:
+class PythonTheradContext:
     user:User
     action_id:int
     service: Any
@@ -30,16 +30,19 @@ class OpenAITheradContext:
         self.action_id = action_id
         self.service = service
 
-openai_thread_context_var = ContextVar("openai_thread_context", default=None)
+python_thread_context_var = ContextVar("python_thread_context", default=None)
+
+def get_python_thread_context():
+    return python_thread_context_var.get()
 
 GLOBAL_II_DICT: Dict[int, code.InteractiveInterpreter] = {}
 GLOBAL_II_DICT_LOCK = threading.Lock()
 
 def cli_print(content:Union[str, bytes], *, mime:str="text/html"):
-    openai_thread_context:OpenAITheradContext = openai_thread_context_var.get()
-    service = openai_thread_context.service
-    action_id = openai_thread_context.action_id
-    user = openai_thread_context.user
+    python_thread_context:PythonTheradContext = python_thread_context_var.get()
+    service = python_thread_context.service
+    action_id = python_thread_context.action_id
+    user = python_thread_context.user
 
     if isinstance(content, str):
         service.append_response_to_action(
@@ -56,7 +59,7 @@ def cli_print(content:Union[str, bytes], *, mime:str="text/html"):
             user = user
         )
 
-def run_code(oatc:OpenAITheradContext, locals:dict, source_code):
+def run_code(oatc:PythonTheradContext, locals:dict, source_code):
     my_locals = locals.copy()
 
     # create an ii if not exist
@@ -100,8 +103,8 @@ class SystemActionHandler(ActionHandler):
         return parsed_request
 
     def cli_open(self, *args, **kwargs)->Union[BinaryIO, TextIO]:
-        openai_thread_context:OpenAITheradContext = openai_thread_context_var.get()
-        user = openai_thread_context.user
+        python_thread_context:PythonTheradContext = python_thread_context_var.get()
+        user = python_thread_context.user
         filename = args[0]
         if filename.startswith("/"):
             raise ValueError(f"filename cannot start with /")
@@ -303,12 +306,12 @@ class SystemActionHandler(ActionHandler):
                     user = user
                 )
 
-        oatc = OpenAITheradContext(
+        oatc = PythonTheradContext(
             user = user,
             action_id = action_id,
             service = self.service
         )
-        openai_thread_context_var.set(oatc)
+        python_thread_context_var.set(oatc)
 
         run_code(
             oatc,
