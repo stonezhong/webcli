@@ -196,11 +196,11 @@ class WebCLIService:
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
-            user = da.find_user_by_email(email)
+            user = da.get_user_by_email(email)
             if user is None:
                 return None
             
-            if bcrypt.checkpw(password.encode("utf-8"), user.hashed_password.encode("utf-8")):
+            if bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
                 return user
             else:
                 return None
