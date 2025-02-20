@@ -10,39 +10,29 @@ Let's start with a mock example, which is easier to understand. In this example,
 %python%
 
 from pydantic import BaseModel, Field, ConfigDict
-from webcli2.core.ai import AITool, AIAgent, create_ai_agent
+from webcli2.core.ai import AIAgent, create_ai_agent
 
-# You need to define the input type your tool
+# Define the input type of your AI Tool
 class JQLInput(BaseModel):
     jql_query: str = Field(..., description="The JQL Query String") # Make the description easy to understand by OpenAI
     model_config = ConfigDict(extra='forbid')  # This is required by OpenAI
 
+# Create an AI Agent
+ai_agent = create_ai_agent()
 
-class JIRATool(AITool):
-    def __init__(self, *, name:str):
-        super().__init__(
-            name=name, 
-            description="Execute JQL Query",  # Make sure the description is understood by OpenAI, so it knows to call this tool
-                                              # to execute JQL Query
-            input_type=JQLInput
-        )
-
-    def invoke(self, input:JQLInput):
-        print(f"running query: {input.jql_query}")
-
-ai_agent = create_ai_agent()  # create an AI Agent
-run_jql_query = JIRATool(name="run_jql_query") # Create a AI Tool for executeing JQL query
-ai_agent.register_tool(run_jql_query) # Register this AI tool with AI Agent
+# Define an AI Tool that can execute a JQL Query
+@ai_agent.aitool(description="Execute JQL Query")
+def run_jql_query(input:JQLInput):
+    print(f"running query: {input.jql_query}")
 
 question = """
 Can you generate a JQL query, the query need to return all JIRA ticket for project HWD, and assignee is shizhong, let's sort the result by created field, with most recent created on top. Use the provided tool to fetch data.
 """
-r = ai_agent.ask_ai(question) # Now ask OpenAI
-ai_agent.process_tools_response(r) # Now process the OpenAI response, which will invoke AI Tool if instructed by OpenAI
+r = ai_agent.run(question) # ask question to AI Engine, take the response and run the AI Tools
 ```
 
 ## Real Example
-In this example, instead of mocking the JQL query, we are going to execute the JQL query.
+Now let's run a real example, instead of mocking the JQL query, we are going to execute the JQL query.
 
 ```python
 %python%
@@ -50,7 +40,7 @@ In this example, instead of mocking the JQL query, we are going to execute the J
 # Make sure you have jira installed: pip install jira
 
 from pydantic import BaseModel, Field, ConfigDict
-from webcli2.core.ai import AITool, AIAgent, create_ai_agent
+from webcli2.core.ai import AIAgent, create_ai_agent
 from jira import JIRA
 
 # You need to define the input of your tool
@@ -58,34 +48,29 @@ class JQLInput(BaseModel):
     jql_query: str = Field(..., description="The JQL Query String")
     model_config = ConfigDict(extra='forbid')
 
-
-class JIRATool(AITool):
-    jira_client:JIRA
-
-    def __init__(self, *, name:str):
-        super().__init__(name=name, description="Execute JQL Query", input_type=JQLInput)
-        options = {"server": "https://jira.oci.oraclecorp.com"}
-        API_TOKEN = "***"
-        self.jira_client = JIRA(options, token_auth=API_TOKEN)
-
-    def invoke(self, input:JQLInput):
-        issues = self.jira_client.search_issues(input.jql_query, maxResults=100)
-        print("JIRA Issues:")
-        print("------------------------")
-        for issue in issues:
-            print(f"{issue.key} | {issue.fields.summary}")
-        print("------------------------")
-
-
+# Create an AI Agent
 ai_agent = create_ai_agent()
-run_jql_query = JIRATool(name="run_jql_query")
-ai_agent.register_tool(run_jql_query)
+
+# Define an AI Tool that can execute a JQL Query
+@ai_agent.aitool(description="Execute JQL Query")
+def run_jql_query(input:JQLInput):
+    options = {"server": "https://jira.oci.oraclecorp.com"}
+    API_TOKEN = "***"
+    jira_client = JIRA(options, token_auth=API_TOKEN)
+    cli_print(f"Running JQL Query: {input.jql_query}", mime="text/plain")
+    issues = jira_client.search_issues(input.jql_query, maxResults=100)
+    cli_print("JIRA Issues:", mime="text/plain")
+    cli_print("------------------------", mime="text/plain")
+    for issue in issues:
+        cli_print(f"{issue.key} | {issue.fields.summary}", mime="text/plain")
+    cli_print("------------------------", mime="text/plain")
 
 question = """
 Can you generate a JQL query, the query need to return all JIRA ticket for project HWD, and assignee is shizhong, let's sort the result by created field, with most recent created on top. Use the provided tool to fetch data.
 """
-r = ai_agent.ask_ai(question)
-ai_agent.process_tools_response(r)
+cli_print("<h1>Question</h1>")
+cli_print(question, mime="text/plain")
+r = ai_agent.run(question) # ask question to AI Engine, take the response and run the AI Tools
 ```
 
 Here is the screenshot when you run this AI Agent:

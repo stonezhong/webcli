@@ -1,8 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import Any, List, Dict, TypeVar, Generic, Type, Callable
-from abc import ABC, abstractmethod
+from typing import Any, Dict, TypeVar, Generic, Type, Callable
 from pydantic import BaseModel
 import json
 from openai import OpenAI
@@ -11,8 +10,7 @@ from webcli2.core.data import User
 
 T = TypeVar('T', bound=BaseModel)
 
-
-class ToolInfo[T]:
+class ToolInfo(Generic[T]):
     input_type: Type[T]
     name: str
     description:str
@@ -32,7 +30,7 @@ class AIAgent:
 
     def aitool(self, *, description:str):
         def get_ai_tool(tool:Callable[[T], None]):
-            ti = ToolInfo(
+            ti = ToolInfo[T](
                 input_type=tool.__annotations__["input"],
                 name = tool.__name__,
                 description = description,
@@ -97,7 +95,10 @@ class AIAgent:
         return completion
     
 
-def create_ai_agent():
+#######################################################
+# Should only be called by custom code in %python% action
+#######################################################
+def create_ai_agent() -> AIAgent:
     from webcli2.action_handlers.system import get_python_thread_context
     thread_context = get_python_thread_context()
     openai_handler = thread_context.service.get_action_handler("openai")
