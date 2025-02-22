@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import Engine, select, delete, func
+from sqlalchemy.exc import IntegrityError
 from webcli2.core.data.db_models import DBThread, DBThreadAction, DBAction, DBActionResponseChunk, DBUser, DBActionHandlerConfiguration
 from webcli2.core.data.models import User, Thread, ThreadSummary, ThreadAction, Action, ActionResponseChunk
 
@@ -15,6 +16,23 @@ def get_utc_now() -> datetime:
 
 class DataError(Exception):
     pass
+
+class DuplicateUserEmail(DataError):
+    # You cannot create more than one users with the same email
+    email: str
+
+    def __init__(
+        self, 
+        *args, 
+        email: str,
+        **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.email = email
+
+    def __str__(self):
+        return f"Cannot create user with duplicate email({self.email})"
+
 
 class ObjectNotFound(DataError):
     object_type: Optional[str]
@@ -53,15 +71,18 @@ class DataAccessor:
     def create_user(self, *, email:str, password_hash:str) -> User:
         """Create a new user.
         """
-        db_user = DBUser(
-            is_active = True,
-            email = email,
-            password_version = 1,
-            password_hash = password_hash
-        )
-        self.session.add(db_user)
-        self.session.commit()
-        return User.from_db(db_user)
+        try:
+            db_user = DBUser(
+                is_active = True,
+                email = email,
+                password_version = 1,
+                password_hash = password_hash
+            )
+            self.session.add(db_user)
+            self.session.commit()
+            return User.from_db(db_user)
+        except IntegrityError:
+            raise DuplicateUserEmail(email=email)
 
     def get_user(self, user_id:int) -> User:
         """Get a user by ID.
@@ -101,7 +122,7 @@ class DataAccessor:
         """Retrive a thread.
         """
         db_thread = self.session.get(DBThread, thread_id)
-        if db_thread is None or db_thread.user_id != thread_id:
+        if db_thread is None or db_thread.user_id != user.id:
             raise ObjectNotFound(object_type="Thread", object_id=thread_id)
 
         thread = Thread.from_db(db_thread) # need to fill in thread_actions
@@ -175,7 +196,7 @@ class DataAccessor:
         """Update thread title and/or description.
         """
         db_thread = self.session.get(DBThread, thread_id)
-        if db_thread is None or db_thread.user_id != thread_id:
+        if db_thread is None or db_thread.user_id != user.id:
             raise ObjectNotFound(object_type="Thread", object_id=thread_id)
         
         updated_fields = 0
@@ -193,7 +214,7 @@ class DataAccessor:
         return self.get_thread(thread_id, user=user)
         
 
-    def create_action(self, *, handler_name:str, request:dict, title:str, raw_text:str, user:User) -> Thread:
+    def create_action(self, *, handler_name:str, request:dict, title:str, raw_text:str, user:User) -> Action:
         """Create a new action.
         """
         db_action = DBAction(

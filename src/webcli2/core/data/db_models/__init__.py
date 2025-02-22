@@ -7,6 +7,7 @@ from .db_user import DBUser
 from .db_thread import DBThread
 from .db_thread_action import DBThreadAction
 from .db_action_response_chunk import DBActionResponseChunk
+from .db_user import DBUser
 
 def create_all_tables(engine:Engine):
     DBModelBase.metadata.create_all(engine)

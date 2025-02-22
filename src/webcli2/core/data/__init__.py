@@ -1,4 +1,4 @@
-from .data_accessor import DataAccessor, ObjectNotFound
+from .data_accessor import DataAccessor, ObjectNotFound, DuplicateUserEmail
 from .models.user import User
 from .models.thread import Thread
 from .models.action import Action
