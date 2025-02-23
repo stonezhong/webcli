@@ -23,7 +23,7 @@ pip install -r tests/requirements.txt
 # assumign your webcli project root is at ~/projects/webcli
 source ~/.venvs/webcli-unit-test/bin/activate
 cd ~/projects/webcli
-pytest -rP
+pytest -rP tests
 ```
 
 # Component Summary
