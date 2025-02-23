@@ -7,6 +7,7 @@
             * [models](#models)
             * [DataAccessor](#dataaccessor)
         * [service](#service)
+            * [Notifications](#notifications)
             * [WebCLIService](#webcliservice)
     * [cli](#cli)
 
@@ -178,6 +179,61 @@ This class provide the Data Accessing Layer. It's input method's argument can re
 
 ### Service
 This is the service layer module.
+
+#### Notifications
+This is a internal module, used by WebCLIService.
+
+* NotificationManager manages multiple topics, each topic has unique `topic_name`
+* Each topic has multiple subscribers, each subscriber has their own unique `client_id`
+* Each subscriber has multiple event in queue
+* Client calls `pop_notification` to pop event from queue associated with the client subscription.
+* `NotificationManager.publish_notification` enqueue event to respective topic
+
+```mermaid
+---
+title: Notification/PubSub System
+---
+flowchart TD
+    classDef greenbox fill:green
+    classDef yellowbox fill:yellow
+
+    topic1[Topic 1]:::greenbox
+    topic2[Topic 2]:::greenbox
+
+    subgraph sub11[subscription from client1]
+        subgraph queue11[Queue]
+            event11-a[event]:::yellowbox
+            event11-b[event]:::yellowbox
+        end
+    end
+
+    subgraph sub12[subscription from client2]
+        subgraph queue12[Queue]
+            event12-a[event]:::yellowbox
+            event12-b[event]:::yellowbox
+        end
+    end
+
+    subgraph sub21[subscription from client1]
+        subgraph queue21[Queue]
+            event21-a[event]:::yellowbox
+            event21-b[event]:::yellowbox
+        end
+    end
+
+    subgraph sub22[subscription from client2]
+        subgraph queue22[Queue]
+            event22-a[event]:::yellowbox
+            event22-b[event]:::yellowbox
+        end
+    end
+
+    topic1 --> sub11
+    topic1 --> sub12
+    topic2 --> sub21
+    topic2 --> sub22
+
+```
 
 #### WebCLIService
 This class provide Service API's for Web CLI. Here are methods
