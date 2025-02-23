@@ -4,7 +4,7 @@
         * data
             * [db_models](#db_models)
             * [models](#models)
-            * [DataAccessor](#)
+            * [DataAccessor](#dataaccessor)
         * [service](#service)
             * [WebCLIService](#webcliservice)
     * [cli](#cli)
@@ -74,7 +74,7 @@ erDiagram
     DBActionHandlerConfiguration {
         int id PK
         str action_handler_name
-        int user_id
+        DBUser user
         datetime created_at
         datetime updated_at
         JSON configuration
@@ -106,7 +106,8 @@ These are Pydandic models.
 | ActionHandlerConfiguration      | User configuration for a action handler  |
 
 #### DataAccessor
-This class provide the Data Accessing Layer. Here are methods
+This class provide the Data Accessing Layer. It's input method's argument can reference Model, output can also reference Model, but it never exposes DBModel as input, nor output. Here are methods. see [core.data.DataAccessor](../../src/webcli2/core/data/data_accessor.py)
+
 
 | Method                          | Description                              |
 | ------------------------------- | ---------------------------------------- |
@@ -126,10 +127,9 @@ This class provide the Data Accessing Layer. Here are methods
 | remove_action_from_thread       | Remove an action from thread, it does not delete the aciton |
 | delete_thread                   | Delete a thread, remove all actions from the thread |
 | patch_thread_action             | update ThreadAction's show_question, show_answer |
+| get_thread_ids_for_action       | Given a action, find all thread that has the action, retrun the list of thread IDs |
 | get_action_handler_user_config  | get user config for action handler |
 | set_action_handler_user_config  | set user config for action handler |
-| get_thread_ids_for_action       | Given a action, find all thread that has the action, retrun the list of thread IDs |
-| create_all_tables               | Create all database tables |
 
 ### Service
 This is the service layer module.

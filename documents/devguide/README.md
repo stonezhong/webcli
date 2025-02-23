@@ -1,7 +1,8 @@
 # Index
 * [Unit Test](#unit-test)
     * [Setup Python Virtual Environment for test](#setup-python-virtual-environment-for-test)
-    * 
+    * [Run Unit Test](#run-unit-test)
+* [Component Summary](#component-summary)
 
 # Unit Test
 ## Setup Python Virtual Environment for test
@@ -16,10 +17,13 @@ pip install -e .
 pip install -r tests/requirements.txt
 ```
 
-# Run Unit Test
+## Run Unit Test
 ```bash
 # assumign your webcli project root is at ~/projects/webcli
 source ~/.venvs/webcli-unit-test/bin/activate
 cd ~/projects/webcli
 pytest -rP
 ```
+
+# Component Summary
+see [Component Summary](components.md)
