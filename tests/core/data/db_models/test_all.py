@@ -8,7 +8,8 @@ from sqlalchemy import create_engine, Engine, select
 from sqlalchemy.orm import Session
 
 from webcli2.core.data import create_all_tables, ObjectNotFound, DataAccessor, DuplicateUserEmail
-from webcli2.core.data.db_models import DBUser, DBThread, DBThreadAction, DBAction, DBActionResponseChunk
+from webcli2.core.data.db_models import DBUser, DBThread, DBThreadAction, DBAction, DBActionResponseChunk, \
+    DBActionHandlerConfiguration
 from webcli2.core.data import User, Thread, Action, ActionResponseChunk
 
 @pytest.fixture
@@ -306,64 +307,77 @@ def test_da_complete_action(db_engine:Engine):
         with pytest.raises(ObjectNotFound) as exc_info:
             da.complete_action(action.id, user=user2)
 
-# ############################################################################
-# # Test
-# #     - create a user
-# #     - query the user by ID, make sure the fields are correct
-# ############################################################################
-# def test_create_db_user(db_engine:Engine):
-#     # save a db user and then read it
-#     with Session(db_engine) as session:
-#         with session.begin():
-#             db_user = DBUser(
-#                 is_active = True,
-#                 email = "stonezhong@hotmail.com",
-#                 password_version = 1,
-#                 password_hash = "***"
-#             )
-#             session.add(db_user)
-#         user_id = db_user.id
+def test_da_set_action_handler_user_config(db_engine:Engine):
+    # no config is set, get_action_handler_user_config should return {}
+    with Session(db_engine) as session:
+        da = DataAccessor(session)
+        user = da.create_user(email="foo@abc.com", password_hash="abc")
+        da.set_action_handler_user_config(
+            action_handler_name="pyspark", 
+            user=user,
+            config = {"foo": 1}
+        )
 
-#     with Session(db_engine) as session:
-#         db_user = session.get(DBUser, user_id)
-#         assert db_user.id == user_id
-#         assert db_user.email == "stonezhong@hotmail.com"
-#         assert db_user.password_version == 1
-#         assert db_user.password_hash == "***"
+        db_ahcs = list(session.scalars(
+            select(DBActionHandlerConfiguration)\
+                .where(DBActionHandlerConfiguration.user_id == user.id)\
+                .where(DBActionHandlerConfiguration.action_handler_name == "pyspark")
+        ))
+        assert len(db_ahcs) == 1
+        db_ahc = db_ahcs[0]
+
+        assert db_ahc.action_handler_name == "pyspark"
+        assert db_ahc.user_id == user.id
+        assert_same_user(User.from_db(db_ahc.user), user)
+        assert db_ahc.configuration == {"foo": 1}
+
+    # Now user already have a config set, let's overwrite it
+    with Session(db_engine) as session:
+        da = DataAccessor(session)
+        da.set_action_handler_user_config(
+            action_handler_name="pyspark", 
+            user=user,
+            config = {"bar": 1}
+        )
+
+        db_ahcs = list(session.scalars(
+            select(DBActionHandlerConfiguration)\
+                .where(DBActionHandlerConfiguration.user_id == user.id)\
+                .where(DBActionHandlerConfiguration.action_handler_name == "pyspark")
+        ))
+        assert len(db_ahcs) == 1
+        db_ahc = db_ahcs[0]
+
+        assert db_ahc.action_handler_name == "pyspark"
+        assert db_ahc.user_id == user.id
+        assert_same_user(User.from_db(db_ahc.user), user)
+        assert db_ahc.configuration == {"bar": 1}
 
 
-# def test_case_1(db_engine:Engine):
-#     with Session(db_engine) as session:
-#         da = DataAccessor(session)
-#         # create a user
-#         user = da.create_user(email="stonezhong@hotmail.com", password_hash="***")
 
-#         # create a thread
-#         thread = da.create_thread(title="foo", description="blah...", user=user)
+def test_da_get_action_handler_user_config(db_engine:Engine):
+    # no config is set, get_action_handler_user_config should return {}
+    with Session(db_engine) as session:
+        da = DataAccessor(session)
+        user = da.create_user(email="foo@abc.com", password_hash="abc")
+        config = da.get_action_handler_user_config(
+            action_handler_name="pyspark", 
+            user=user
+        )
+        assert config == {}
 
-#         # create an action
-#         action = da.create_action(
-#             handler_name = "foo",
-#             request = {},
-#             title = "question 1",
-#             raw_text = "%html%\n<h1>Hi</h1>",
-#             user = user
-#         )
-#         # adding action to thread
-#         da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user)
 
-#         da.append_response_to_action(
-#             action.id, 
-#             mime="text/html", 
-#             text_content="<h1>Hello</h1>", 
-#             user=user
-#         )
+    # set config, get_action_handler_user_config should return user's config
+    with Session(db_engine) as session:
+        da = DataAccessor(session)
+        da.set_action_handler_user_config(
+            action_handler_name="pyspark", 
+            user=user,
+            config = {"foo": 1}
+        )
+        config = da.get_action_handler_user_config(
+            action_handler_name="pyspark", 
+            user=user
+        )
+        assert config=={"foo": 1}
 
-#         # da.delete_thread(thread.id, user=user)
-#         thread = da.get_thread(thread.id, user=user)
-
-#         print(json.dumps(
-#             thread.model_dump(mode="json"),
-#             indent=4
-#         ))
-        

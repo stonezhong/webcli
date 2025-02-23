@@ -466,6 +466,17 @@ class DataAccessor:
         )
         return thread_action
 
+    def get_thread_ids_for_action(self, action_id:int) -> List[int]:
+        """Get list of threads that has this action.
+
+        Note: We are not checking user, since an action can potentially be part of multiple
+              threads owned by different users.
+        """
+        return [db_thread_action.thread_id for db_thread_action in self.session.scalars(
+            select(DBThreadAction)\
+                .where(DBThreadAction.action_id == action_id)
+        )]
+
     def get_action_handler_user_config(
         self,
         *,
@@ -512,15 +523,4 @@ class DataAccessor:
 
         self.session.add(db_ahc)
         self.session.commit()
-
-    def get_thread_ids_for_action(self, action_id:int) -> List[int]:
-        """Get list of threads that has this action.
-
-        Note: We are not checking user, since an action can potentially be part of multiple
-              threads owned by different users.
-        """
-        return [db_thread_action.thread_id for db_thread_action in self.session.scalars(
-            select(DBThreadAction)\
-                .where(DBThreadAction.action_id == action_id)
-        )]
 
