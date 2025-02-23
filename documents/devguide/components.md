@@ -1,7 +1,8 @@
 # Index
-* Python Modules
-    * core
-        * data
+* [High Level Design](#high-level-design)
+* [Python Modules](#python-modules)
+    * [core](#core)
+        * [data](#data)
             * [db_models](#db_models)
             * [models](#models)
             * [DataAccessor](#dataaccessor)
@@ -10,9 +11,51 @@
     * [cli](#cli)
 
 
+# High Level Design
+```mermaid
+---
+title: Web CLI Hight Level Design
+---
+flowchart TD
+    classDef redbox fill:red
+    classDef greenbox fill:green
+    classDef orangebox fill:Tomato
+
+    db[(Database)]:::redbox
+    dal[
+        Data Access Layer
+        DataAccessor
+    ]:::greenbox
+    sl[
+        Service Layer
+        WebCLIService
+    ]:::orangebox
+    apis[
+        API Layer
+        REST APIs
+    ]
+    subgraph Action Handlers
+        ah1[
+            Action Handler foo
+        ]
+        ah2[
+            Action Handler bar
+        ]
+    end
+    cli[
+        WebCLI CLI Tool
+    ]
+    db<-->dal<-->sl<-->apis
+    ah1 <--> sl
+    ah2 <--> sl
+    cli <--> sl
+```
+
 # Python Modules
 ## core
 ### data
+`webcli2.core.data` module provides the Data Access Layer, it provide a set of APIs to manage `Model` objects. `DBModules` module is internal, all are SQLAlchemy models, `DBModule` is never designed to be visible outsoude the Data Layer, while  `Models` is designed to be publicly visible.
+
 #### db_models
 These are SQLAlchemy data models.
 
@@ -24,6 +67,8 @@ These are SQLAlchemy data models.
 | DBThread                        | A thread                                 |
 | DBThreadAction                  | Represent a thread has an action         |
 | DBActionHandlerConfiguration    | User configuration for a action handler  |
+
+We use singular for table name, for example, we use name "DBUser" instead of "DBUsers" as table name. Use singular as table name, the advantage is the table name match the name of DBModel name, which is easy to manage.
 
 ```mermaid
 ---

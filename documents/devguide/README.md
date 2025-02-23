@@ -3,6 +3,7 @@
     * [Setup Python Virtual Environment for test](#setup-python-virtual-environment-for-test)
     * [Run Unit Test](#run-unit-test)
 * [Component Summary](#component-summary)
+* [Coding Style](#coding-style)
 
 # Unit Test
 ## Setup Python Virtual Environment for test
@@ -27,3 +28,6 @@ pytest -rP
 
 # Component Summary
 see [Component Summary](components.md)
+
+# Coding Style
+* See also [Google Python Style Guide](#https://google.github.io/styleguide/pyguide.html)
