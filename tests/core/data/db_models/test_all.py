@@ -410,6 +410,34 @@ def test_da_delete_thread(
         with pytest.raises(ObjectNotFound) as exc_info:
             da.delete_thread(thread_id=thread.id, user=user2)
 
+def test_da_patch_thread_action(
+    session:Session, 
+    da:DataAccessor, 
+    user:User, 
+    user2:User, 
+    thread:Thread, 
+    action:Action, 
+):
+    with session:
+        thread_action = da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user)
+
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_question=False)
+        ta = session.get(DBThreadAction, thread_action.id)
+        assert ta.show_question == False
+
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_question=True)
+        ta = session.get(DBThreadAction, thread_action.id)
+        assert ta.show_question == True
+
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_answer=False)
+        ta = session.get(DBThreadAction, thread_action.id)
+        assert ta.show_answer == False
+
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_answer=True)
+        ta = session.get(DBThreadAction, thread_action.id)
+        assert ta.show_answer == True
+
+
 def test_da_set_action_handler_user_config(session:Session, da:DataAccessor, user:User):
     # no config is set, get_action_handler_user_config should return {}
     with session:
