@@ -157,7 +157,6 @@ This class provide Service API's for Web CLI. Here are methods
 | patch_thread_action             | update ThreadAction's show_question, show_answer |
 | get_action_handler_user_config  | get user config for action handler |
 | set_action_handler_user_config  | set user config for action handler |
-| get_action_user                 | Given an action, return the user of the action |
 | websocket_endpoint              | Web Socket Hanlder |
 | get_action_handler              | Get registered action handler by name |
 | create_all_tables               | Create all database tables |

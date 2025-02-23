@@ -330,7 +330,7 @@ class WebCLIService:
             da = DataAccessor(session)
             return da.append_action_to_thread(thread_id=thread_id, action_id=action_id, user=user)
 
-    def complete_action(self, action_id:int, *, user:User) -> Action:
+    def complete_action(self, action_id:int, *, user:Optional[User]=None) -> Action:
         """Set an action to be completed.
         """
         with Session(self.db_engine) as session:
@@ -367,7 +367,7 @@ class WebCLIService:
         mime:str, 
         text_content:Optional[str] = None, 
         binary_content:Optional[bytes] = None, 
-        user:User
+        user:Optional[User] = None
     ) -> ActionResponseChunk:
         """Append an response chunk to the end of a action.
         """
@@ -462,13 +462,6 @@ class WebCLIService:
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
             return da.set_action_handler_user_config(action_handler_name=action_handler_name, user=user, config=config)
-
-    def get_action_user(self, action_id:int) -> Optional[User]:
-        """Get user for the action.
-        """
-        with Session(self.db_engine) as session:
-            da = DataAccessor(session)
-            return da.get_action_user(action_id)
 
     #######################################################################
     # This is called by web socket endpoint from fastapi

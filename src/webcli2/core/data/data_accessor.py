@@ -262,10 +262,12 @@ class DataAccessor:
         
         return self.get_action(action_id, user=user)
 
-    def complete_action(self, action_id:int, *, user:User) -> Action:
+    def complete_action(self, action_id:int, *, user:Optional[User]=None) -> Action:
         """Set an action to be completed.
         """
         db_action = self.session.get(DBAction, action_id)
+        if user is None:
+            user = db_action.user
         if db_action is None or db_action.user_id != user.id:
             raise ObjectNotFound(object_type="Action", object_id=action_id)
 
@@ -325,14 +327,16 @@ class DataAccessor:
         mime:str, 
         text_content:Optional[str] = None, 
         binary_content:Optional[bytes] = None, 
-        user:User
+        user:Optional[User] = None
     ) -> ActionResponseChunk:
         """Append an response chunk to the end of a action.
         """
         db_action = self.session.get(DBAction, action_id)
+        if user is None:
+            user = db_action.user
         if db_action is None or db_action.user_id != user.id:
             raise ObjectNotFound(object_type="Action", object_id=action_id)
-        
+
         old_max_order = self.session.scalars(
             select(
                 func.max(DBActionResponseChunk.order)
@@ -520,10 +524,3 @@ class DataAccessor:
                 .where(DBThreadAction.action_id == action_id)
         )]
 
-    def get_action_user(self, action_id:int) -> Optional[User]:
-        """Get user for the action.
-        """
-        db_action = self.session.get(DBAction, action_id)
-        if db_action is None:
-            return None
-        return User.from_db(db_action.user)

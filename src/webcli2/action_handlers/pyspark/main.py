@@ -178,17 +178,12 @@ class PySparkActionHandler(ActionHandler):
                             # let's complete the action
                             logger.debug(f"{log_prefix}: action has been handled successfully, action_id={sequence}")
 
-                            user = self.service.get_action_user(sequence)
-                            if user is None:
-                                logger.debug(f"{log_prefix}: cannot find user for action({sequence})")
-                            else:
-                                self.service.append_response_to_action(
-                                    sequence,
-                                    mime = "text/plain",
-                                    text_content = cli_package.reply_message,
-                                    user = user
-                                )
-                                self.service.complete_action(sequence, user=user)
+                            self.service.append_response_to_action(
+                                sequence,
+                                mime = "text/plain",
+                                text_content = cli_package.reply_message,
+                            )
+                            self.service.complete_action(sequence)
                         else:
                             # this CLI package is not associated with an action
                             slot = PENDING_CLI_REQUEST.get(sequence)
