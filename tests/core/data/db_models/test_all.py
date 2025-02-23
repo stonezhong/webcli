@@ -308,6 +308,50 @@ def test_da_append_action_to_thread(
         with pytest.raises(ObjectNotFound) as exc_info:
             da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user2)
 
+def test_da_append_response_to_action(session:Session, da:DataAccessor, user:User, action:Action):
+    with session:
+        da.append_response_to_action(
+            action.id,
+            mime = "text/plain",
+            text_content="hello",
+            binary_content=None,
+            user=user
+        )
+        db_action_response_chunkns = list(session.scalars(
+            select(DBActionResponseChunk)\
+                .where(DBActionResponseChunk.action_id == action.id)\
+                .order_by(DBActionResponseChunk.order)
+        ))
+        assert len(db_action_response_chunkns) == 1
+        db_action_response_chunk = db_action_response_chunkns[0]
+        assert db_action_response_chunk.action_id == action.id
+        assert db_action_response_chunk.order == 1 # this is the first response
+        assert db_action_response_chunk.mime == "text/plain"
+        assert db_action_response_chunk.text_content == "hello"
+        assert db_action_response_chunk.binary_content is None
+
+        # add another one
+        da.append_response_to_action(
+            action.id,
+            mime = "text/plain",
+            text_content="hello2",
+            binary_content=None,
+            user=user
+        )
+        db_action_response_chunkns = list(session.scalars(
+            select(DBActionResponseChunk)\
+                .where(DBActionResponseChunk.action_id == action.id)\
+                .order_by(DBActionResponseChunk.order)
+        ))
+        assert len(db_action_response_chunkns) == 2
+        db_action_response_chunk = db_action_response_chunkns[1]
+        assert db_action_response_chunk.action_id == action.id
+        assert db_action_response_chunk.order == 2 # this is the first response
+        assert db_action_response_chunk.mime == "text/plain"
+        assert db_action_response_chunk.text_content == "hello2"
+        assert db_action_response_chunk.binary_content is None
+
+
 def test_da_set_action_handler_user_config(session:Session, da:DataAccessor, user:User):
     # no config is set, get_action_handler_user_config should return {}
     with session:
