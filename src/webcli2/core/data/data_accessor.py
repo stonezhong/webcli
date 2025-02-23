@@ -33,6 +33,24 @@ class DuplicateUserEmail(DataError):
     def __str__(self):
         return f"Cannot create user with duplicate email({self.email})"
 
+class ActionAlreadyInThread(DataError):
+    # You cannot create more than one users with the same email
+    action_id: int
+    thread_id: int
+
+    def __init__(
+        self, 
+        *args, 
+        thread_id: int,
+        action_id: int,
+        **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.thread_id = thread_id
+        self.action_id = action_id
+
+    def __str__(self):
+        return f"Action({self.action_id}) is already in Thread({self.thread_id}), cannot be added again."
 
 class ObjectNotFound(DataError):
     object_type: Optional[str]
@@ -82,6 +100,7 @@ class DataAccessor:
             self.session.commit()
             return User.from_db(db_user)
         except IntegrityError:
+            self.session.rollback()
             raise DuplicateUserEmail(email=email)
 
     def get_user(self, user_id:int) -> User:
@@ -281,44 +300,48 @@ class DataAccessor:
     def append_action_to_thread(self, *, thread_id:int, action_id:int, user:User) -> ThreadAction:
         """Append an action to the end of a thread.
         """
-        db_thread = self.session.get(DBThread, thread_id)
-        db_action = self.session.get(DBAction, action_id)
+        try:
+            db_thread = self.session.get(DBThread, thread_id)
+            db_action = self.session.get(DBAction, action_id)
 
-        if db_thread is None or db_thread.user_id != user.id:
-            raise ObjectNotFound(object_type="Thread", object_id=thread_id)
+            if db_thread is None or db_thread.user_id != user.id:
+                raise ObjectNotFound(object_type="Thread", object_id=thread_id)
 
-        if db_action is None or db_action.user_id != user.id:
-            raise ObjectNotFound(object_type="Action", object_id=action_id)
-               
-        old_max_display_order = self.session.scalars(
-            select(
-                func.max(DBThreadAction.display_order)
-            ).where(DBThreadAction.thread_id == thread_id)
-        ).one()
-        if old_max_display_order is None:
-            display_order = 1
-        else:
-            display_order = old_max_display_order + 1
-       
-        db_thread_action = DBThreadAction(
-            thread_id = thread_id,
-            action_id = action_id,
-            display_order = display_order,
-            show_question = False,
-            show_answer = True
-        )
-        self.session.add(db_thread_action)
-        self.session.commit()
+            if db_action is None or db_action.user_id != user.id:
+                raise ObjectNotFound(object_type="Action", object_id=action_id)
+                
+            old_max_display_order = self.session.scalars(
+                select(
+                    func.max(DBThreadAction.display_order)
+                ).where(DBThreadAction.thread_id == thread_id)
+            ).one()
+            if old_max_display_order is None:
+                display_order = 1
+            else:
+                display_order = old_max_display_order + 1
+        
+            db_thread_action = DBThreadAction(
+                thread_id = thread_id,
+                action_id = action_id,
+                display_order = display_order,
+                show_question = False,
+                show_answer = True
+            )
+            self.session.add(db_thread_action)
+            self.session.commit()
 
-        thread_action = ThreadAction(
-            id = db_thread_action.id,
-            thread_id = db_thread_action.thread_id,
-            action = self.get_action(db_thread_action.action_id, user=user),
-            display_order = db_thread_action.display_order,
-            show_question = db_thread_action.show_question,
-            show_answer = db_thread_action.show_answer
-        )
-        return thread_action
+            thread_action = ThreadAction(
+                id = db_thread_action.id,
+                thread_id = db_thread_action.thread_id,
+                action = self.get_action(db_thread_action.action_id, user=user),
+                display_order = db_thread_action.display_order,
+                show_question = db_thread_action.show_question,
+                show_answer = db_thread_action.show_answer
+            )
+            return thread_action
+        except IntegrityError:
+            self.session.rollback()
+            raise ActionAlreadyInThread(thread_id=thread_id, action_id=action_id)
 
     def append_response_to_action(
         self, 
