@@ -30,4 +30,4 @@ pytest -rP
 see [Component Summary](components.md)
 
 # Coding Style
-* See also [Google Python Style Guide](#https://google.github.io/styleguide/pyguide.html)
+* See also [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
