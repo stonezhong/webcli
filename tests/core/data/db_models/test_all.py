@@ -437,6 +437,30 @@ def test_da_patch_thread_action(
         ta = session.get(DBThreadAction, thread_action.id)
         assert ta.show_answer == True
 
+        # if thread_id is wrong, then it cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.patch_thread_action(thread_id=100, action_id=action.id, user=user, show_question=False)
+
+        # if action_id is wrong, then it cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.patch_thread_action(thread_id=thread.id, action_id=100, user=user, show_question=False)
+
+        # if user does not own thread, it cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user2, show_question=False)
+
+def test_da_get_thread_ids_for_action(
+    session:Session, 
+    da:DataAccessor, 
+    user:User, 
+    thread:Thread, 
+    thread2:Thread,
+    action:Action, 
+):
+    with session:
+        da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user)
+        da.append_action_to_thread(thread_id=thread2.id, action_id=action.id, user=user)
+        set(da.get_thread_ids_for_action(action.id)) == set([thread.id, thread2.id])
 
 def test_da_set_action_handler_user_config(session:Session, da:DataAccessor, user:User):
     # no config is set, get_action_handler_user_config should return {}
