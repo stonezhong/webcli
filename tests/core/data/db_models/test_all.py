@@ -376,6 +376,39 @@ def test_da_remove_action_from_thread(session:Session, da:DataAccessor, user:Use
         with pytest.raises(ObjectNotFound) as exc_info:
             da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user2)
 
+def test_da_delete_thread(
+    session:Session, 
+    da:DataAccessor, 
+    user:User, 
+    user2:User, 
+    thread:Thread, 
+    action:Action, 
+    action2:Action
+):
+    with session:
+        da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user)
+        da.append_action_to_thread(thread_id=thread.id, action_id=action2.id, user=user)
+        da.delete_thread(thread.id, user=user)
+
+        # all ThreadAction associated with the thread should be deleted
+        # thread itself should be deleted
+        # actions should still be there
+        db_thread_actions = list(session.scalars(
+            select(DBThreadAction)\
+                .where(DBThreadAction.thread_id == thread.id)
+        ))
+        assert len(db_thread_actions) == 0
+        assert session.get(DBThread, thread.id) is None
+        assert session.get(DBAction, action.id) is not None
+        assert session.get(DBAction, action2.id) is not None
+
+        # delete non existing thread cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.delete_thread(thread_id=100, user=user)
+
+        # delete thread from non-creator causing ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.delete_thread(thread_id=thread.id, user=user2)
 
 def test_da_set_action_handler_user_config(session:Session, da:DataAccessor, user:User):
     # no config is set, get_action_handler_user_config should return {}
