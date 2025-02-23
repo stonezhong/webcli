@@ -351,6 +351,31 @@ def test_da_append_response_to_action(session:Session, da:DataAccessor, user:Use
         assert db_action_response_chunk.text_content == "hello2"
         assert db_action_response_chunk.binary_content is None
 
+def test_da_remove_action_from_thread(session:Session, da:DataAccessor, user:User, user2:User, thread:Thread, action:Action):
+    with session:
+        # the common case
+        da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user)
+        r = da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user)
+        assert r == True
+        thread2 = da.get_thread(thread.id, user=user)
+        assert len(thread2.thread_actions) == 0 # after removing the action from thread, the thread has no actions
+
+        # removing an action that is not in the thread, retrun False
+        r = da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user)
+        assert r == False
+
+        # removing an non existing action id, cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.remove_action_from_thread(thread_id=thread.id, action_id=100, user=user)
+
+        # removing an non existing thread id, cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.remove_action_from_thread(thread_id=100, action_id=action.id, user=user)
+
+        # removing an non existing thread id, cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user2)
+
 
 def test_da_set_action_handler_user_config(session:Session, da:DataAccessor, user:User):
     # no config is set, get_action_handler_user_config should return {}
