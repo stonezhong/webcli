@@ -15,7 +15,7 @@ def load_webcli_service(config:WebCLIApplicationConfig, ) -> WebCLIService:
     action_handlers = { }
 
     action_handlers_config:Dict[str, ActionHandlerInfo] = {
-        "config": ActionHandlerInfo(
+        "system": ActionHandlerInfo(
             module_name="webcli2.action_handlers.system",
             class_name="SystemActionHandler",
             config = {}

@@ -263,6 +263,8 @@ This class provide Service API's for Web CLI. Here are methods
 | create_all_tables               | Create all database tables |
 
 ## cli
+The webcli2 has a command line script registered with method `webcli2.cli.webcli`, it provides a command line entry for webcli2, so you can do some management work for webcli, such as start the server, create user, initialize database.
+
 | Method                          | Description                              |
 | ------------------------------- | ---------------------------------------- |
 | webcli                          | entry method for Python Package CLI      |
