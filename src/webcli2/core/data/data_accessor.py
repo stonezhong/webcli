@@ -392,11 +392,11 @@ class DataAccessor:
         action_id:int, 
         thread_id:int,
         user:User
-    ) -> bool:
+    ):
         """Remove an action from a thread, it does not delete the action.
 
-        Returns:
-            bool: True if the action is removed, False if the action was not part of the thread
+        Raises:
+            ObjectNotFound: if thread does not exist or action does not exist or thread does not reference to action.
         """
         db_thread = self.session.get(DBThread, thread_id)
         db_action = self.session.get(DBAction, action_id)
@@ -406,7 +406,7 @@ class DataAccessor:
 
         if db_action is None or db_action.user_id != user.id:
             raise ObjectNotFound(object_type="Action", object_id=action_id)
-        
+
         result = self.session.execute(
             delete(DBThreadAction)\
                 .where(DBThreadAction.thread_id == thread_id)\
@@ -414,7 +414,8 @@ class DataAccessor:
         )
         deleted_rows = result.rowcount
         self.session.commit()
-        return deleted_rows > 0
+        if deleted_rows == 0:
+            raise ObjectNotFound(object_type="ThreadAction", message=f"thread_id={thread_id}, action_id={action_id}")
 
 
     def delete_thread(
@@ -425,6 +426,8 @@ class DataAccessor:
     ):
         """Delete a thread.
 
+        Raises:
+            ObjectNotFound: if thread does not exist.
         """
         db_thread = self.session.get(DBThread, thread_id)
 
@@ -451,6 +454,9 @@ class DataAccessor:
         show_answer:   Optional[PatchValue[bool]] = None
     ) -> ThreadAction:
         """Update thread action's show_question and/or show_answer.
+
+        Raises:
+            ObjectNotFound: if thread does not exist, or action does not exist, or thread_action does not exist
         """
         db_thread = self.session.get(DBThread, thread_id)
         if db_thread is None or db_thread.user_id != user.id:
@@ -492,7 +498,8 @@ class DataAccessor:
 
     def get_thread_ids_for_action(self, action_id:int) -> List[int]:
         """Get list of threads that has this action.
-
+        Returns:
+            Return list of id of thread who references this action.
         Note: We are not checking user, since an action can potentially be part of multiple
               threads owned by different users.
         """

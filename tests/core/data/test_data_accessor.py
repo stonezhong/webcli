@@ -356,14 +356,14 @@ def test_da_remove_action_from_thread(session:Session, da:DataAccessor, user:Use
     with session:
         # the common case
         da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user)
-        r = da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user)
-        assert r == True
+        da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user)
         thread2 = da.get_thread(thread.id, user=user)
         assert len(thread2.thread_actions) == 0 # after removing the action from thread, the thread has no actions
 
-        # removing an action that is not in the thread, retrun False
-        r = da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user)
-        assert r == False
+        # removing an action that is not in the thread, cause ObjectNotFound
+        with pytest.raises(ObjectNotFound) as exc_info:
+            da.remove_action_from_thread(thread_id=thread.id, action_id=action.id, user=user)
+
 
         # removing an non existing action id, cause ObjectNotFound
         with pytest.raises(ObjectNotFound) as exc_info:
