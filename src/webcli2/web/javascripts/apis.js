@@ -146,7 +146,7 @@ export async function update_action_title({action_id, title}) {
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({title:get_patch_value(value)}),
+        body: JSON.stringify({title:get_patch_value(title)}),
     });
     if (!response.ok) {
         throw new Error(`Failed to update action title: ${response.status}`);
