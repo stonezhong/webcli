@@ -1,3 +1,10 @@
+function get_patch_value(value) {
+    if (typeof value === "undefined") {
+        return null;
+    }
+    return {value:value};
+}
+
 export async function list_threads() {
     /***************
      * Return:
@@ -60,7 +67,7 @@ export async function update_thread_title({thread_id, title}) {
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({title}),
+        body: JSON.stringify({title: get_patch_value(title)}),
     });
     if (!response.ok) {
         throw new Error(`update_thread_title: Failed to update thread title: ${response.status}`);
@@ -74,7 +81,7 @@ export async function update_thread_description({thread_id, description}) {
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({description}),
+        body: JSON.stringify({description: get_patch_value(description)}),
     });
     if (!response.ok) {
         throw new Error(`update_thread_description: Failed to update thread description: ${response.status}`);
@@ -139,7 +146,7 @@ export async function update_action_title({action_id, title}) {
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({title:title}),
+        body: JSON.stringify({title:get_patch_value(value)}),
     });
     if (!response.ok) {
         throw new Error(`Failed to update action title: ${response.status}`);
@@ -153,7 +160,7 @@ export async function update_thread_action_show_question({thread_id, action_id, 
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({show_question}),
+        body: JSON.stringify({show_question:get_patch_value(show_question)}),
     });
     if (!response.ok) {
         throw new Error(`Failed to update action title: ${response.status}`);
@@ -167,7 +174,7 @@ export async function update_thread_action_show_answer({thread_id, action_id, sh
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({show_answer}),
+        body: JSON.stringify({show_answer:get_patch_value(show_answer)}),
     });
     if (!response.ok) {
         throw new Error(`Failed to update action title: ${response.status}`);

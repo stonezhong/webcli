@@ -12,6 +12,7 @@ from webcli2.core.data import create_all_tables, ObjectNotFound, DataAccessor, D
 from webcli2.core.data.db_models import DBUser, DBThread, DBThreadAction, DBAction, DBActionResponseChunk, \
     DBActionHandlerConfiguration
 from webcli2.core.data import User, Thread, Action, ActionResponseChunk
+from webcli2.core.types import PatchValue
 
 @pytest.fixture
 def db_engine() -> Generator[Engine]:
@@ -227,7 +228,7 @@ def test_da_get_action(session:Session, da:DataAccessor, user:User, user2:User, 
 
 def test_da_patch_action(session:Session, da:DataAccessor, user:User, user2:User, action:Action):
     with session:
-        da.patch_action(action.id, user=user, title="bar")
+        da.patch_action(action.id, user=user, title=PatchValue(value="bar"))
     
         action2 = da.get_action(action.id, user=user)
         assert action2.title == "bar"
@@ -421,33 +422,33 @@ def test_da_patch_thread_action(
     with session:
         thread_action = da.append_action_to_thread(thread_id=thread.id, action_id=action.id, user=user)
 
-        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_question=False)
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_question=PatchValue(value=False))
         ta = session.get(DBThreadAction, thread_action.id)
         assert ta.show_question == False
 
-        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_question=True)
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_question=PatchValue(value=True))
         ta = session.get(DBThreadAction, thread_action.id)
         assert ta.show_question == True
 
-        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_answer=False)
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_answer=PatchValue(value=False))
         ta = session.get(DBThreadAction, thread_action.id)
         assert ta.show_answer == False
 
-        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_answer=True)
+        da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user, show_answer=PatchValue(value=True))
         ta = session.get(DBThreadAction, thread_action.id)
         assert ta.show_answer == True
 
         # if thread_id is wrong, then it cause ObjectNotFound
         with pytest.raises(ObjectNotFound) as exc_info:
-            da.patch_thread_action(thread_id=100, action_id=action.id, user=user, show_question=False)
+            da.patch_thread_action(thread_id=100, action_id=action.id, user=user, show_question=PatchValue(value=False))
 
         # if action_id is wrong, then it cause ObjectNotFound
         with pytest.raises(ObjectNotFound) as exc_info:
-            da.patch_thread_action(thread_id=thread.id, action_id=100, user=user, show_question=False)
+            da.patch_thread_action(thread_id=thread.id, action_id=100, user=user, show_question=PatchValue(value=False))
 
         # if user does not own thread, it cause ObjectNotFound
         with pytest.raises(ObjectNotFound) as exc_info:
-            da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user2, show_question=False)
+            da.patch_thread_action(thread_id=thread.id, action_id=action.id, user=user2, show_question=PatchValue(value=False))
 
 def test_da_get_thread_ids_for_action(
     session:Session, 

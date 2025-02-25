@@ -1,11 +1,12 @@
-from typing import List, Dict, Optional
+from typing import List, Optional
 from datetime import datetime, timezone
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import Engine, select, delete, func
+from sqlalchemy import select, delete, func
 from sqlalchemy.exc import IntegrityError
-from webcli2.core.data.db_models import DBThread, DBThreadAction, DBAction, DBActionResponseChunk, DBUser, DBActionHandlerConfiguration
+from webcli2.core.data.db_models import DBThread, DBThreadAction, DBAction, DBActionResponseChunk, DBUser, \
+    DBActionHandlerConfiguration
 from webcli2.core.data.models import User, Thread, ThreadSummary, ThreadAction, Action, ActionResponseChunk
+from webcli2.core.types import PatchValue
 
 #############################################################
 # Get the current UTC time
@@ -209,8 +210,8 @@ class DataAccessor:
         thread_id:int, 
         *, 
         user:User,
-        title:Optional[str] = None, 
-        description:Optional[str] = None
+        title: Optional[PatchValue[str]] = None,
+        description: Optional[PatchValue[str]] = None
     ) -> Thread:
         """Update thread title and/or description.
         """
@@ -220,10 +221,10 @@ class DataAccessor:
         
         updated_fields = 0
         if title is not None:
-            db_thread.title = title
+            db_thread.title = title.value
             updated_fields += 1
         if description is not None:
-            db_thread.description = description
+            db_thread.description = description.value
             updated_fields += 1
         
         if updated_fields > 0:
@@ -267,7 +268,7 @@ class DataAccessor:
         ]
         return action
 
-    def patch_action(self, action_id:int, *, user:User, title:Optional[str]=None) -> Action:
+    def patch_action(self, action_id:int, *, user:User, title:Optional[PatchValue[str]]=None) -> Action:
         """Update action's title.
         """
         db_action = self.session.get(DBAction, action_id)
@@ -275,7 +276,7 @@ class DataAccessor:
             raise ObjectNotFound(object_type="Action", object_id=action_id)
 
         if title is not None:
-            db_action.title = title
+            db_action.title = title.value
             self.session.add(db_action)
             self.session.commit()
         
@@ -446,8 +447,8 @@ class DataAccessor:
         action_id:int, 
         *, 
         user:User,
-        show_question:Optional[bool]=None, 
-        show_answer:Optional[bool]=None
+        show_question: Optional[PatchValue[bool]] = None,
+        show_answer:   Optional[PatchValue[bool]] = None
     ) -> ThreadAction:
         """Update thread action's show_question and/or show_answer.
         """
@@ -469,10 +470,10 @@ class DataAccessor:
 
         updated_fields = 0
         if show_question is not None:
-            db_thread_action.show_question = show_question
+            db_thread_action.show_question = show_question.value
             updated_fields += 1
         if show_answer is not None:
-            db_thread_action.show_answer = show_answer
+            db_thread_action.show_answer = show_answer.value
             updated_fields += 1
         
         if updated_fields > 0:

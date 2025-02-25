@@ -21,6 +21,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from webcli2.core.data import User, Thread, Action, DataAccessor, ThreadAction, ActionResponseChunk, create_all_tables as cat
 import webcli2.action_handlers.action_handler as action_handler
+from webcli2.core.types import PatchValue
 from .notifications import NotificationManager, pop_notification, Notification
 
 WEB_SOCKET_PING_INTERVAL = 20  # in seconds
@@ -270,8 +271,8 @@ class WebCLIService:
         thread_id:int, 
         *, 
         user:User,
-        title:Optional[str]=None, 
-        description:Optional[str]=None
+        title:Optional[PatchValue[str]]=None, 
+        description:Optional[PatchValue[str]]=None
     ) -> Thread:
         """Update a thread's title and/or description.
         Args:
@@ -346,7 +347,7 @@ class WebCLIService:
             da = DataAccessor(session)
             return da.remove_action_from_thread(action_id=action_id, thread_id=thread_id, user=user)
         
-    def patch_action(self, action_id:int, *, user:User, title:Optional[str]=None) -> Action:
+    def patch_action(self, action_id:int, *, user:User, title:Optional[PatchValue[str]]=None) -> Action:
         """Update action's title.
         """
         with Session(self.db_engine) as session:
@@ -454,8 +455,8 @@ class WebCLIService:
         action_id:int, 
         *, 
         user:User,
-        show_question:Optional[bool]=None, 
-        show_answer:Optional[bool]=None
+        show_question:Optional[PatchValue[bool]]=None, 
+        show_answer:Optional[PatchValue[bool]]=None
     ) -> ThreadAction:
         with Session(self.db_engine) as session:
             da = DataAccessor(session)

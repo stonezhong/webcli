@@ -21,14 +21,15 @@ from fastapi import WebSocket
 
 from webcli2.config import load_config
 from webcli2.core.service import InvalidJWTTOken, NoHandler
+from webcli2.core.types import PatchValue
 from .libs.tools import redirect
 
 class PatchThreadActionRequest(BaseModel):
-    show_question: Optional[bool] = None
-    show_answer: Optional[bool] = None
+    show_question: Optional[PatchValue[bool]] = None
+    show_answer: Optional[PatchValue[bool]] = None
 
 class PatchActionRequest(BaseModel):
-    title: str
+    title: Optional[PatchValue[str]] = None
 
 class CreateThreadRequest(BaseModel):
     title: str
@@ -40,8 +41,8 @@ class CreateActionRequest(BaseModel):
     request: dict
 
 class PatchThreadRequest(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: Optional[PatchValue[str]] = None
+    description: Optional[PatchValue[str]] = None
 
 ##########################################################
 # WEB_DIR is the directory of web insode webcli2 package
