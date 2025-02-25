@@ -13,6 +13,8 @@ import pytest
 from unittest.mock import MagicMock, patch, ANY
 
 from sqlalchemy import create_engine
+from webcli2.core.data import ObjectNotFound
+from webcli2.core.service import WrongPassword
 
 PRIVATE_KEY = """
 -----BEGIN PRIVATE KEY-----
@@ -131,11 +133,11 @@ def test_login_user_not_found(webcli_service):
     with patch('webcli2.core.service.webcli_service.DataAccessor') as MockDataAccessor:
         mock_da = MagicMock()
         MockDataAccessor.return_value = mock_da
-        mock_da.get_user_by_email.return_value = None
+        mock_da.get_user_by_email = MagicMock(side_effect=ObjectNotFound())
 
-        user = webcli_service.login_user(email="foo@abc.com", password="abc")
-        mock_da.get_user_by_email.assert_called_once_with("foo@abc.com")
-        assert user is None
+        with pytest.raises(ObjectNotFound) as exc_info:
+            webcli_service.login_user(email="foo@abc.com", password="abc")
+            mock_da.get_user_by_email.assert_called_once_with("foo@abc.com")
 
 def test_login_user_wrong_password(webcli_service):
     # simulate: user with the email exist, but password is wrong
@@ -148,10 +150,10 @@ def test_login_user_wrong_password(webcli_service):
 
             mock_bcrypt.checkpw.return_value = False
 
-            user = webcli_service.login_user(email="foo@abc.com", password="abc")
-            mock_da.get_user_by_email.assert_called_once_with("foo@abc.com")
-            mock_bcrypt.checkpw.assert_called_once_with(b"abc", b"foo")
-            assert user is None
+            with pytest.raises(WrongPassword) as exc_info:
+                webcli_service.login_user(email="foo@abc.com", password="abc")
+                mock_da.get_user_by_email.assert_called_once_with("foo@abc.com")
+                mock_bcrypt.checkpw.assert_called_once_with(b"abc", b"foo")
 
 def test_login_user(webcli_service):
     # simulate: user with the email exist, password is correct

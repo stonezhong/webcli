@@ -1,2 +1,2 @@
-from .webcli_service import WebCLIService, InvalidJWTTOken, NoHandler
+from .webcli_service import WebCLIService, InvalidJWTTOken, NoHandler, WrongPassword
 

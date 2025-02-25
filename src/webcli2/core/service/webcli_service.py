@@ -15,7 +15,7 @@ import os
 from sqlalchemy.orm import Session
 import bcrypt
 import jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import Engine
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -29,6 +29,9 @@ class ServiceError(Exception):
     pass
 
 class InvalidJWTTOken(ServiceError):
+    pass
+
+class WrongPassword(ServiceError):
     pass
 
 class NoHandler(ServiceError):
@@ -175,6 +178,10 @@ class WebCLIService:
 
     def get_user_from_jwt_token(self, jwt_token:str) -> User:
         """ Get user from JWT token.
+
+        Raises:
+            InvalidJWTTOken: if the jwt_token is not a valid JWT token
+            ObjectNotFound: user associated with the JWT token does not exist
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
@@ -183,32 +190,44 @@ class WebCLIService:
             except jwt.exceptions.InvalidSignatureError as e:
                 raise InvalidJWTTOken() from e
             
-            jwt_token_payload = JWTTokenPayload.model_validate(payload)
-            user_id = int(jwt_token_payload.sub)
+            try:
+                jwt_token_payload = JWTTokenPayload.model_validate(payload)
+            except ValidationError:
+                raise InvalidJWTTOken() from e
+            
+            try:
+                user_id = int(jwt_token_payload.sub)
+            except ValueError:
+                raise InvalidJWTTOken() from e
+
             user = da.get_user(user_id)
             return user
 
         
-    def login_user(self, *, email:str, password:str) -> Optional[User]:
+    def login_user(self, *, email:str, password:str) -> User:
         """ Login user.
         Returns:
             None if user failed to login. Otherwise, a user object is returned.
+        Raises:
+            ObjectNotFound: if the user does not exist
+            WrongPassword: if the user password is wrong
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
             user = da.get_user_by_email(email)
-            if user is None:
-                return None
             
             if bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
                 return user
             else:
-                return None
+                raise WrongPassword()
     
     def generate_user_jwt_token(self, user:User)->str:
         """ Generate user JWT token.
         Returns:
             None if user failed to login. Otherwise, a user object is returned.
+        Note:
+            We put some random string in token so evertime the token is different, it 
+            make it harder for people to guess our private key.
         """
         payload = JWTTokenPayload(
             email = user.email,
@@ -239,6 +258,8 @@ class WebCLIService:
 
     def get_thread(self, thread_id:int, *, user:User) -> Thread:
         """Retrive a thread.
+        Raises:
+            ObjectNotFound: if thread does not exist, or user is not the creator of the thread
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
@@ -253,6 +274,13 @@ class WebCLIService:
         description:Optional[str]=None
     ) -> Thread:
         """Update a thread's title and/or description.
+        Args:
+            thread_id: the ID of the thread you want to update.
+            user: the user who is performing this operation.
+            title: A string, if you want to change the title, or None if you do not want to change title
+            description: A string, if you want to change the description, or None if you do not want to change description
+        Raises:
+            ObjectNotFound: if thread does not exist, or user is not the creator of the thread
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
@@ -295,6 +323,8 @@ class WebCLIService:
 
     def delete_thread(self, thread_id:int, *, user:User):
         """Delete a thread.
+        Raises:
+            ObjectNotFound: if the thread is not found.
         """
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
