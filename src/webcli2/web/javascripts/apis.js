@@ -181,3 +181,31 @@ export async function update_thread_action_show_answer({thread_id, action_id, sh
     }
     await response.json();
 }
+
+export async function move_thread_action_up({thread_action_id}) {
+    const response = await fetch(`/apis/thread_actions/move/${thread_action_id}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({direction: "up"}),
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to move thread_action up: ${response.status}`);
+    }
+    await response.json();
+}
+
+export async function move_thread_action_down({thread_action_id}) {
+    const response = await fetch(`/apis/thread_actions/move/${thread_action_id}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({direction: "down"}),
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to move thread_action down: ${response.status}`);
+    }
+    await response.json();
+}

@@ -26,9 +26,10 @@ export class ThreadsPage extends React.Component {
     }
 
     do_create_thread = async () => {
-        await create_thread({title:"no title", description:"no description"});
-        const threads = await list_threads();
-        this.setState({threads:threads})
+        const response = await create_thread({title:"no title", description:"no description"});
+        window.location.href = `/threads/${response.id}`;
+        // const threads = await list_threads();
+        // this.setState({threads:threads})
     };
 
     do_delete_thread = async id => {

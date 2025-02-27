@@ -3,7 +3,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Literal
 import os
 import uuid
 
@@ -43,6 +43,9 @@ class CreateActionRequest(BaseModel):
 class PatchThreadRequest(BaseModel):
     title: Optional[PatchValue[str]] = None
     description: Optional[PatchValue[str]] = None
+
+class MoveThreadActionRequest(BaseModel):
+    direction: Literal["up", "down"]
 
 ##########################################################
 # WEB_DIR is the directory of web insode webcli2 package
@@ -306,5 +309,18 @@ async def patch_action(request_data: PatchActionRequest, request:Request, action
     try:
         action = service.patch_action(action_id=action_id, title = request_data.title, user=user)
         return action
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
+
+@app.post("/apis/thread_actions/move/{thread_action_id}", response_model=ThreadAction)
+async def move_thread_action(request_data:MoveThreadActionRequest, request:Request, thread_action_id:int, user:User=Depends(authenticate_or_deny)):
+    try:
+        if request_data.direction == "up":
+            thread_action = service.move_thread_action_up(thread_action_id=thread_action_id, user=user)
+        elif request_data.direction == "down":
+            thread_action = service.move_thread_action_down(thread_action_id=thread_action_id, user=user)
+        else:
+            raise HTTPException(status_code=400, detail="Only up or down are supported")
+        return thread_action
     except ObjectNotFound:
         raise HTTPException(status_code=404, detail="Object not found")

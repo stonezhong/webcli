@@ -1,7 +1,7 @@
 from typing import List, Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, desc
 from sqlalchemy.exc import IntegrityError
 from webcli2.core.data.db_models import DBThread, DBThreadAction, DBAction, DBActionResponseChunk, DBUser, \
     DBActionHandlerConfiguration
@@ -555,3 +555,85 @@ class DataAccessor:
         self.session.add(db_ahc)
         self.session.commit()
 
+
+    def move_thread_action_up(self, thread_action_id:int, *, user:User) -> ThreadAction:
+        """Move an action up inside a thread.
+        """
+        db_thread_action = self.session.get(DBThreadAction, thread_action_id)
+        if db_thread_action is None or db_thread_action.action.user_id != user.id:
+            raise ObjectNotFound(object_type="ThreadAction", object_id=thread_action_id)
+
+        prior_db_thread_action = self.session.scalars(
+            select(DBThreadAction)\
+                .where(DBThreadAction.thread_id == db_thread_action.thread_id)\
+                .where(DBThreadAction.display_order < db_thread_action.display_order)
+                .order_by(desc(DBThreadAction.display_order))
+        ).one_or_none()
+
+        if prior_db_thread_action is None:
+            # we already have the smallest display_order, cannot move up any more
+            return ThreadAction(
+                id = db_thread_action.id,
+                thread_id = db_thread_action.thread_id,
+                action = self.get_action(db_thread_action.action_id, user=user),
+                display_order=db_thread_action.display_order,
+                show_question=db_thread_action.show_question,
+                show_answer=db_thread_action.show_answer
+            )
+
+        tmp_display_order = db_thread_action.display_order
+        db_thread_action.display_order = prior_db_thread_action.display_order
+        prior_db_thread_action.display_order = tmp_display_order
+
+        self.session.add(db_thread_action)
+        self.session.add(prior_db_thread_action)
+        self.session.commit()
+        return ThreadAction(
+            id = db_thread_action.id,
+            thread_id = db_thread_action.thread_id,
+            action = self.get_action(db_thread_action.action_id, user=user),
+            display_order=db_thread_action.display_order,
+            show_question=db_thread_action.show_question,
+            show_answer=db_thread_action.show_answer
+        )
+
+    def move_thread_action_down(self, thread_action_id:int, *, user:User) -> ThreadAction:
+        """Move an action down inside a thread.
+        """
+        db_thread_action = self.session.get(DBThreadAction, thread_action_id)
+        if db_thread_action is None or db_thread_action.action.user_id != user.id:
+            raise ObjectNotFound(object_type="ThreadAction", object_id=thread_action_id)
+
+        prior_db_thread_action = self.session.scalars(
+            select(DBThreadAction)\
+                .where(DBThreadAction.thread_id == db_thread_action.thread_id)\
+                .where(DBThreadAction.display_order > db_thread_action.display_order)
+                .order_by(DBThreadAction.display_order)
+        ).one_or_none()
+
+        if prior_db_thread_action is None:
+            # we already have the smallest display_order, cannot move up any more
+            return ThreadAction(
+                id = db_thread_action.id,
+                thread_id = db_thread_action.thread_id,
+                action = self.get_action(db_thread_action.action_id, user=user),
+                display_order=db_thread_action.display_order,
+                show_question=db_thread_action.show_question,
+                show_answer=db_thread_action.show_answer
+            )
+
+        tmp_display_order = db_thread_action.display_order
+        db_thread_action.display_order = prior_db_thread_action.display_order
+        prior_db_thread_action.display_order = tmp_display_order
+
+        self.session.add(db_thread_action)
+        self.session.add(prior_db_thread_action)
+        self.session.commit()
+        return ThreadAction(
+            id = db_thread_action.id,
+            thread_id = db_thread_action.thread_id,
+            action = self.get_action(db_thread_action.action_id, user=user),
+            display_order=db_thread_action.display_order,
+            show_question=db_thread_action.show_question,
+            show_answer=db_thread_action.show_answer
+        )

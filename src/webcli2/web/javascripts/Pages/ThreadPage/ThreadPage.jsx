@@ -13,12 +13,14 @@ import { MdModeEdit, MdDelete } from "react-icons/md";
 import { setStateAsync } from "@/tools.js";
 import { PageHeader } from "@/Components/PageHeader";
 import ReactMarkdown from "react-markdown";
+import { FaUpLong, FaDownLong } from "react-icons/fa6";
 import mermaid from 'mermaid';
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
     update_thread_action_show_question, update_thread_action_show_answer,
-    update_thread_title, update_thread_description
+    update_thread_title, update_thread_description, move_thread_action_up,
+    move_thread_action_down
 } from '@/apis';
 
 import {
@@ -438,7 +440,21 @@ export class ThreadPage extends React.Component {
                                 await this.setActionShowAnswer(threadAction, event.target.checked);
                             }}
                         />
-                        <MdDelete className="standard-icon clickable-icon"
+                        <FaUpLong 
+                            className="standard-icon clickable-icon" 
+                            title="move up"
+                            onClick={async event=>{
+                                await move_thread_action_up({thread_action_id:threadAction.id});
+                            }}
+                        />
+                        <FaDownLong 
+                            className="standard-icon clickable-icon" 
+                            title="move down" 
+                            onClick={async event=>{
+                                await move_thread_action_down({thread_action_id:threadAction.id});
+                            }}
+                        />
+                        <MdDelete className="standard-icon clickable-icon" title="delete"
                             onClick={async event=>{
                                 await this.deleteAction(action);
                             }}
@@ -590,6 +606,16 @@ export class ThreadPage extends React.Component {
             return;
         }
 
+        if (threadEvent.type === "thread-reload") {
+            const thread = await get_thread(this.props.threadId);
+            const threadActionWrappers = thread.thread_actions.map(threadAction => new ThreadActionWrapper(threadAction));
+            await setStateAsync(this, {
+                thread_title: thread.title,
+                thread_description: thread.description,
+                threadActionWrappers
+            })
+            return;
+        }
     }
 
     connect() {

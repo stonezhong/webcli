@@ -560,3 +560,43 @@ class WebCLIService:
 
     def create_all_tables(self):
         return cat(self.db_engine)
+
+    def move_thread_action_up(self, thread_action_id:int, *, user:User) -> ThreadAction:
+        with Session(self.db_engine) as session:
+            da = DataAccessor(session)
+            thread_action = da.move_thread_action_up(thread_action_id, user=user)
+
+            thread_id = thread_action.thread_id
+            event = {
+                # client need to reload thread
+                "type": "thread-reload"
+            }
+
+            notification = Notification(topic_name=f"topic-{thread_id}", event = event)
+
+            run_coroutine_threadsafe(
+                self.nm.publish_notification(notification),
+                self.event_loop
+            )
+
+            return thread_action
+
+    def move_thread_action_down(self, thread_action_id:int, *, user:User) -> ThreadAction:
+        with Session(self.db_engine) as session:
+            da = DataAccessor(session)
+            thread_action = da.move_thread_action_down(thread_action_id, user=user)
+
+            thread_id = thread_action.thread_id
+            event = {
+                # client need to reload thread
+                "type": "thread-reload"
+            }
+
+            notification = Notification(topic_name=f"topic-{thread_id}", event = event)
+
+            run_coroutine_threadsafe(
+                self.nm.publish_notification(notification),
+                self.event_loop
+            )
+
+            return thread_action
