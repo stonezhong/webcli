@@ -1,7 +1,7 @@
 # Index
 * Create an AI Tool
-    * Mock Example
-    * Real Example
+    * [Mock Example](#mock-example)
+    * [Real Example](#real-example)
 
 # Create an AI Tool
 ## Mock Example
