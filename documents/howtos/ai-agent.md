@@ -128,6 +128,31 @@ Now HTMLTableGenerator can start to work since `jira_issues` variable has been p
 
 So the job is done.
 
+Here is a diagram:
+```mermaid
+
+flowchart LR
+    up[User Prompt
+Can you query Jira, return tickets for the project HWD, and assignee is shizhong, let's sort the result by created field, with most recent created on top, store the result as jira_issues.
+Then generate a HTML table, pick items from stored value jira_issues, the first column of the table should be key, the second column of the table should be fields.summary. Store the result as jira_table.
+Then update my confluence page, pick the html content from stored value jira_table.
+
+]
+    tk[AIThinker]
+
+    up --> tk
+
+    p1[Can you query Jira, return tickets for the project HWD, and assignee is shizhong, sort the result by created field, with most recent created on top, store the result as jira_issues.]
+    p2[Generate a HTML table, pick items from stored value jira_issues, the first column of the table should be key, the second column of the table should be fields.summary. Store the result as jira_table.]
+    p3[Update my confluence page, pick the html content from stored value jira_table.]
+
+    tk --> p1 --> JiraExpert
+    tk --> p2 --> HTMLTableGenerator
+    tk --> p3 --> ConfluenceExpert
+
+    JiraExpert --provide jira_issues--> HTMLTableGenerator --provide jira_table--> ConfluenceExpert
+```
+
 ```python
 %python%
 
