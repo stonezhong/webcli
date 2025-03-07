@@ -1,7 +1,9 @@
 # Index
-* Create an AI Tool
+* Single AI Agent Examples
     * [Mock Example](#mock-example)
     * [Real Example](#real-example)
+* [Multi AI Agent Examples](#multi-ai-agent-example)
+
 
 # Create an AI Tool
 ## Mock Example
@@ -93,7 +95,38 @@ Here is the screenshot when you run this AI Agent:
 
 
 
-# Multi-Agent Example
+# Multi AI Agent Example
+
+* [JiraExpert](https://github.com/stonezhong/webcli/blob/master/src/webcli2/demo/jira_expert.py)
+* [HTMLTableGenerator](https://github.com/stonezhong/webcli/blob/master/src/webcli2/demo/html_table_generator.py)
+* [ConfluenceExpert](https://github.com/stonezhong/webcli/blob/master/src/webcli2/demo/confluence_expert.py)
+
+Here is how it works.
+* When you create AIThinker, you add bunch of AI Agent that can help to solve customer's problem.
+* When you ask AIThinker a question, it won't try to solve the question directly, instead, it will try to divide the question into small questions that each can be answered by one of the registered AI Agent.
+* We have three AI Agent here: JiraExpert, HTMLTableGenerator and ConfluenceExpert.
+
+First, you ask the AIThinker following question: 
+```
+Can you query Jira, return tickets for the project HWD, and assignee is shizhong, let's sort the result by created field, with most recent created on top, store the result as jira_issues.
+Then generate a HTML table, pick items from stored value jira_issues, the first column of the table should be key, the second column of the table should be fields.summary. Store the result as jira_table.
+Then update my confluence page, pick the html content from stored value jira_table.
+```
+
+Now, AIThinker will breakdown the question into 3 smaller question, and pass to different AI Agent
+
+- It asks JiraExpert this question: `Can you query Jira, return tickets for the project HWD, and assignee is shizhong, sort the result by created field, with most recent created on top, store the result as jira_issues.`
+- It asks HTMLTableGenerator this question: `Generate a HTML table, pick items from stored value jira_issues, the first column of the table should be key, the second column of the table should be fields.summary. Store the result as jira_table.`
+- It asks ConfluenceExpert this question: `Update my confluence page, pick the html content from stored value jira_table.`
+
+Now `HTMLTableGenerator` cannot start to work since it requires variable `jira_issues` sincew we have `...pick items from stored value jira_issues`.
+`ConfluenceExpert` cannot start to work since it requires variable `jira_table`, since we have `...pick the html content from stored value jira_table.`
+
+However, `JiraExpert` can work directly, so it asks LLM and get a JQL statement. It use the JQLQueryTool to execute JQL statement and save jira issues into variable `jira_issues` since we have `...store the result as jira_issues.`
+
+Now HTMLTableGenerator can start to work since `jira_issues` variable has been provided, as it works, it generate variable `jira_table`, so it unblocks `ConfluenceExpert`, so ConfluenceExpert start to work, it update my confluence page using the congtent in `jira_table`. 
+
+So the job is done.
 
 ```python
 %python%
