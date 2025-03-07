@@ -146,9 +146,9 @@ Then update my confluence page, pick the html content from stored value jira_tab
     p2[Generate a HTML table, pick items from stored value jira_issues, the first column of the table should be key, the second column of the table should be fields.summary. Store the result as jira_table.]
     p3[Update my confluence page, pick the html content from stored value jira_table.]
 
-    tk --> p1 --> JiraExpert
-    tk --> p2 --> HTMLTableGenerator
-    tk --> p3 --> ConfluenceExpert
+    tk --split part 1--> p1 --> JiraExpert
+    tk --split part 2--> p2 --> HTMLTableGenerator
+    tk --split part 3--> p3 --> ConfluenceExpert
 
     JiraExpert --provide jira_issues--> HTMLTableGenerator --provide jira_table--> ConfluenceExpert
 ```
