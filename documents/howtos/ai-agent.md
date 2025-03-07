@@ -91,3 +91,33 @@ r = jira_agent.run()
 Here is the screenshot when you run this AI Agent:
 ![Screenshot](ai-agent-01.png "Screenshot")
 
+
+
+# Multi-Agent Example
+
+```python
+%python%
+
+from webcli2.core.ai import cli_print, AIThinker, AIAgentInfo
+from webcli2.demo.jira_expert import JiraExpert
+from webcli2.demo.html_table_generator import HTMLTableGenerator
+from webcli2.demo.confluence_expert import ConfluenceExpert
+
+top_task = AIThinker(
+    name="My Personal Assistant at Oracle", 
+)
+top_task.add_agent_factory(AIAgentInfo.from_class(JiraExpert))
+top_task.add_agent_factory(AIAgentInfo.from_class(ConfluenceExpert))
+top_task.add_agent_factory(AIAgentInfo.from_class(HTMLTableGenerator))
+top_task.set_variable(
+    "prompt", 
+    """\
+Can you query Jira, return tickets for the project HWD, and assignee is shizhong, let's sort the result by created field, with most recent created on top, store the result as jira_issues.
+Then generate a HTML table, pick items from stored value jira_issues, the first column of the table should be key, the second column of the table should be fields.summary. Store the result as jira_table.
+Then update my confluence page, pick the html content from stored value jira_table.
+"""
+)
+top_task.run()
+cli_print("<h1>Done</h1>")
+```
+

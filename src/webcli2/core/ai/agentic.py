@@ -1,12 +1,13 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from typing import List, Dict, Any, Optional, TypeVar, Type
+from typing import List, Dict, Any, Optional, TypeVar, Type, Generic, Tuple, Callable
 import enum
 from abc import ABC, abstractmethod
 import json
-from pydantic import BaseModel
-from openai import OpenAI
+from pydantic import BaseModel, Field, ConfigDict
+from openai import OpenAI, ChatCompletion
+from webcli2.action_handlers.system import cli_print
 
 class AgentError(Exception):
     pass
@@ -48,102 +49,67 @@ class DuplicateTool(AgentError):
         super().__init__(*argc, **kwargs)
         self.tool_name = tool_name
 
+class AgentClassNotFound(AgentError):
+    """We cannot create a instance of a agent class
+    """
+    agent_class_name: str
+
+    def __init__(self, agent_class_name:str, *argc, **kwargs):
+        super().__init__(*argc, **kwargs)
+        self.agent_class_name = agent_class_name
+
+################################################################
+# A task can optionally have parent task
+# You can run a task, as long as it is not finished
+# In some cases a task depend on parent's variable, once that
+# variable is not yet provided, run the task returns immediately
+################################################################
 class Task(ABC):
+    parent: Optional["Task"]
     name: str
-    description: str
-    requires: List[str]
-    provides: List[str]
-    variables: Dict[str, Any]
+    description: str = ""
+    _variables: Dict[str, Any]
+    _finished: bool
 
-    def __init__(self, *, name:str, description:str, requires:List[str]=[], provides:List[str]=[]):
+    def __init__(self, *, name:str, parent:Optional["Task"]=None):
         super().__init__()
+        self.parent = parent
         self.name = name
-        self.description = description
-        self.requires = requires.copy()
-        self.provides = provides.copy()
-        self.variables = {}
+        self._variables = {}
+        self._finished = False
 
+    def set_finished(self):
+        self._finished = True
+    
+    def is_finished(self):
+        return self._finished
+    
     def set_variable(self, name:str, value:Any):
-        self.variables[name] = value
+        self._variables[name] = value
     
     def get_variable(self, name:str) -> Any:
-        if name not in self.variables:
+        if name not in self._variables:
             raise VariableMissing(name)
-        return self.variables[name]
+        return self._variables[name]
 
     def has_variable(self, name:str) -> bool:
-        return name in self.variables
+        return name in self._variables
 
     @abstractmethod
     def run(self):
         pass
 
-class _TaskWrapper:
-    task: Task
-    variable_map: Optional[Dict[str, str]] # key is the variable name in context, value is the variable name in task
-    _invert_variable_map: Optional[Dict[str, str]] # invert of variable_map
-    finished: bool
-
-    ###############################################################################################################
-    # a task may require ["x", "y"]
-    # variable_map = {"a": "x", "b": "y"} means the task will take variable "a" from it's parent as "x"
-    # and "b" from it's parent as "y"
-    ###############################################################################################################
-
-    def __init__(self, task:Task, variable_map:Optional[Dict[str, str]]=None):
-        self.task = task
-        self.finished = False
-        if variable_map is None:
-            self.variable_map = None
-            self._invert_variable_map = None
-        else:
-            self.variable_map = variable_map.copy()
-            self._invert_variable_map = {}
-            for k, v in variable_map.items():
-                if v in self._invert_variable_map:
-                    raise InvalidVariableMap()
-                self._invert_variable_map[v] = k
-    
 class CompositeTask(Task):
-    children:List[_TaskWrapper]            # child tasks wrapped
+    children:List[Task]            # child tasks wrapped
 
-    def __init__(self, *, name:str, description:str, requires:List[str]=[], provides:List[str]=[]):
-        super().__init__(name=name, description=description, requires=requires, provides=provides)
+    def __init__(self, *, name:str):
+        super().__init__(name=name)
         self.children = []
 
-    def add_task(self, child:Task, *, variable_map:Optional[Dict[str, str]]=None):
-        self.children.append(_TaskWrapper(child, variable_map))
+    def add_task(self, child:Task):
+        child.parent = self
+        self.children.append(child)
     
-    def can_run_task(self, task_wrapper:_TaskWrapper) -> bool:
-        required_variable_names = [
-            task_wrapper._invert_variable_map(variable_name) for variable_name in task_wrapper.task.requires
-        ]
-        for required_variable_name in required_variable_names:
-            if not self.has_variable(required_variable_name):
-                return False
-        return True
-
-    def run_task(self, task_wrapper:_TaskWrapper):
-        required_variable_names = [
-            task_wrapper._invert_variable_map(variable_name) for variable_name in task_wrapper.task.requires
-        ]
-        task_wrapper.finished = True
-        # import variable into task before run
-        for required_variable_name in required_variable_names:
-            task_wrapper.task.set_variable(
-                task_wrapper.variable_map[required_variable_name],
-                self.get_variable(required_variable_name)
-            )
-        # run task
-        task_wrapper.task.run()
-        # export variable from task after run
-        for variable_name in task_wrapper.task.provides:
-            value = task_wrapper.task.get_variable(variable_name)
-            self.set_variable(
-                task_wrapper._invert_variable_map[variable_name],
-                value
-            )
-
     def run(self):
         ###################################################################
         # - If a child can run, we will run it
@@ -151,19 +117,28 @@ class CompositeTask(Task):
         ###################################################################
         while True:
             task_finished = 0
-            for task_wrapper in self.children:
-                if task_wrapper.finished:
+            for task in self.children:
+                if task.is_finished():
                     continue
-                if self.can_run_task(task_wrapper):
-                    self.run_task(task_wrapper)
-                    task_finished += 1
+                logger.info(f"CompositeTask.run: task={task.name}")
+                task.run()
+                task_finished += 1
             if task_finished == 0:
                 break
+        
+        has_unfinished_task = False
+        for task in self.children:
+            if not task.is_finished():
+                has_unfinished_task = True
+                break
+        if not has_unfinished_task:
+            self.set_finished()
+
 
 
 T = TypeVar('T', bound=BaseModel)
     
-class Tool(ABC):
+class Tool(Generic[T], ABC):
     name: str
     description: str
     input_type: Type[T]
@@ -177,7 +152,6 @@ class Tool(ABC):
     @abstractmethod
     def run(self, input:T):
         pass
-
 
 class MessageRole(enum.Enum):
     SYSTEM = "system"
@@ -200,12 +174,16 @@ class AgenticMixin:
         super().__init__()
         self.tools = {}
     
-    def add_tool(self, tool:Tool):
+    def add_tool(self, tool:Tool[T]):
         if tool.name in self.tools:
             raise DuplicateTool(tool.name)
         self.tools[tool.name] = tool
-    
-    def ask_llm(self, messages: List[Message], *, model=LLMModel.GPT_4O):
+
+    def ask_llm(self, messages: List[Message], *, model=LLMModel.GPT_4O, temperature=0.0) -> Tuple[ChatCompletion, Dict[str, Any]]:
+        """Ask LLM, invoke tools
+        Retruns:
+            A tuple, first element is the LLM response, 2nd element is the tool invocation result
+        """
 
         from webcli2.action_handlers.system import get_python_thread_context
         thread_context = get_python_thread_context()
@@ -240,8 +218,11 @@ class AgenticMixin:
             messages = [
                 message.model_dump(mode='json') for message in messages
             ],
+            temperature=temperature,
             tools=tools
         )
+
+        results = {}
 
         for tc in completion.choices[0].message.tool_calls:
             tool = self.tools.get(tc.function.name)
@@ -249,5 +230,87 @@ class AgenticMixin:
                 raise ToolNotFound(tc.function.name)
             input = tool.input_type.model_validate(json.loads(tc.function.arguments))
             logger.debug(f"Invoking tool [{tc.function.name}] with argument [{input}]")
-            tool.run(input)
-        return completion
+            result = tool.run(input)
+            results[tc.function.name] = result
+        return completion, results
+
+class AIPlannerTool(Tool):
+    class InputType(BaseModel):
+        class AgentInfo(BaseModel):
+            agent_name: str = Field(..., description="The name of the AI agent.")
+            question: str = Field(..., description="The Question passed to the AI Agent")
+            model_config = ConfigDict(extra='forbid')
+
+        plans: List[AgentInfo] = Field(..., description="List of agent info, which contains agent name and question passed to agent.")
+        model_config = ConfigDict(extra='forbid')
+
+    def __init__(self):
+        super().__init__(name="discover_ai_agents", description="Discover AI Agents", input_type=self.InputType)
+
+    def run(self, input:InputType):
+        return input
+
+Q = TypeVar('Q', bound='Task')
+
+class AIAgentInfo(Generic[Q]):
+    name:str
+    description:str
+    factory: Callable[[], Q]
+
+    def __init__(self, name:str, description:str, factory:Callable[[], Q]):
+        self.name = name
+        self.description = description
+        self.factory = factory
+    
+    @classmethod
+    def from_class(cls, klass: Type[Q]):
+        return AIAgentInfo(klass.__name__, klass.description, klass)
+
+
+class AIThinker(CompositeTask, AgenticMixin):
+    ai_agents_info:List[AIAgentInfo[Task]]
+
+    def __init__(self, *argc, **kwargs):
+        super().__init__(*argc, **kwargs)
+        self.add_tool(AIPlannerTool())
+        self.ai_agents_info = []
+
+    def add_agent_factory(self, ai_agent_info:AIAgentInfo):
+        self.ai_agents_info.append(ai_agent_info)
+    
+    def create_agent(self, agent_class_name:str)->Task:
+        for ai_agent_info in self.ai_agents_info:
+            if agent_class_name == ai_agent_info.name:
+                agent = ai_agent_info.factory(parent=self)
+                return agent
+        raise AgentClassNotFound(agent_class_name)
+    
+    def create_agent_descriptions(self):
+        p = "I have the following AI Agent:\n"
+        p += "```\n"
+        for ai_agent_info in self.ai_agents_info:
+            p += (ai_agent_info.description + "\n")
+        p += "```\n"
+        p += "Could you please let me know which AI agent I shall use as next steps? Also figure out the respective question for each of the picked AI agent."
+        return p
+    
+
+    def run(self):
+        # Let's plan first
+        prompt = self.get_variable("prompt")
+        prompt += f"\n\n{self.create_agent_descriptions()}"
+        logger.info(f"AIThinker.run: ask LLM with following message")
+        logger.info(prompt)
+        logger.info(f"AIThinker.run: ask LLM =====")
+        r, results = self.ask_llm(
+            [
+                Message(role=MessageRole.USER, content=prompt)
+            ]
+        )
+        discover_ai_agents:AIPlannerTool.InputType = results["discover_ai_agents"]
+        for plan in discover_ai_agents.plans:
+            agent = self.create_agent(plan.agent_name)
+            agent.set_variable("prompt", plan.question)
+            self.add_task(agent)
+
+        super().run()        
