@@ -1,7 +1,8 @@
 .cli-page {
-	height: calc(100vh - 60px);
+	height: calc(100vh - 56px);
 	width: 100%;
     overflow: hidden;
+    margin-top: 56px; // the height of the header
 
     .actions-panel {
         padding-bottom: 12px;

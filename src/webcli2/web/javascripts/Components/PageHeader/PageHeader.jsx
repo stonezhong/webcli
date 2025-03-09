@@ -8,7 +8,7 @@ import './PageHeader.scss';
 
 export class PageHeader extends React.Component {
     render() {
-        return <Navbar sticky="top" className="page-header">
+        return <Navbar fixed="top" className="page-header">
         <Container fluid>
           <Navbar.Toggle aria-controls="basic-navbar-nav" />
           <Navbar.Collapse id="basic-navbar-nav">
