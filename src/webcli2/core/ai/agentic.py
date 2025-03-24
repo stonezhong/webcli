@@ -120,7 +120,7 @@ class CompositeTask(Task):
             for task in self.children:
                 if task.is_finished():
                     continue
-                logger.info(f"CompositeTask.run: task={task.name}")
+                # logger.info(f"CompositeTask.run: task={task.name}")
                 task.run()
                 task_finished += 1
             if task_finished == 0:
@@ -212,6 +212,17 @@ class AgenticMixin:
             }
             tools.append(t)
 
+        logs = ["AgenticMixin.ask_llm, input:"]
+        logs.append(f"temperature: {temperature}")
+        for message in messages:
+            logs.append(f"role       : {message.role}")
+            logs.append(f"content    : {message.content}")
+
+        logs.append(f"tools      :")
+        logs.append(json.dumps(tools, indent=4))
+        logs.append("")
+        logger.debug("\n".join(logs))
+
         completion = openai_client.chat.completions.create(
             model=model.value,
             store=True,
@@ -224,14 +235,18 @@ class AgenticMixin:
 
         results = {}
 
+        logs = ["AgenticMixin.ask_llm, output:"]
         for tc in completion.choices[0].message.tool_calls:
             tool = self.tools.get(tc.function.name)
             if tool is None:
                 raise ToolNotFound(tc.function.name)
             input = tool.input_type.model_validate(json.loads(tc.function.arguments))
-            logger.debug(f"Invoking tool [{tc.function.name}] with argument [{input}]")
+            logs.append(f"tool, name     = {tc.function.name}")
+            logs.append(json.dumps(json.loads(tc.function.arguments), indent=4))
             result = tool.run(input)
             results[tc.function.name] = result
+        logs.append("")
+        logger.debug("\n".join(logs))
         return completion, results
 
 class AIPlannerTool(Tool):
@@ -299,9 +314,9 @@ class AIThinker(CompositeTask, AgenticMixin):
         # Let's plan first
         prompt = self.get_variable("prompt")
         prompt += f"\n\n{self.create_agent_descriptions()}"
-        logger.info(f"AIThinker.run: ask LLM with following message")
-        logger.info(prompt)
-        logger.info(f"AIThinker.run: ask LLM =====")
+        # logger.info(f"AIThinker.run: ask LLM with following message")
+        # logger.info(prompt)
+        # logger.info(f"AIThinker.run: ask LLM =====")
         r, results = self.ask_llm(
             [
                 Message(role=MessageRole.USER, content=prompt)

@@ -568,7 +568,7 @@ class DataAccessor:
                 .where(DBThreadAction.thread_id == db_thread_action.thread_id)\
                 .where(DBThreadAction.display_order < db_thread_action.display_order)
                 .order_by(desc(DBThreadAction.display_order))
-        ).one_or_none()
+        ).first()
 
         if prior_db_thread_action is None:
             # we already have the smallest display_order, cannot move up any more
@@ -609,7 +609,7 @@ class DataAccessor:
                 .where(DBThreadAction.thread_id == db_thread_action.thread_id)\
                 .where(DBThreadAction.display_order > db_thread_action.display_order)
                 .order_by(DBThreadAction.display_order)
-        ).one_or_none()
+        ).first()
 
         if prior_db_thread_action is None:
             # we already have the smallest display_order, cannot move up any more
