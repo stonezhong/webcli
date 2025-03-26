@@ -40,6 +40,10 @@ class CreateActionRequest(BaseModel):
     raw_text: str
     request: dict
 
+class ReRunActionRequest(BaseModel):
+    raw_text: str
+    request: dict
+
 class PatchThreadRequest(BaseModel):
     title: Optional[PatchValue[str]] = None
     description: Optional[PatchValue[str]] = None
@@ -308,6 +312,14 @@ async def patch_thread_action(request_data: PatchThreadActionRequest, request:Re
 async def patch_action(request_data: PatchActionRequest, request:Request, action_id:int, user:User=Depends(authenticate_or_deny)):
     try:
         action = service.patch_action(action_id=action_id, title = request_data.title, user=user)
+        return action
+    except ObjectNotFound:
+        raise HTTPException(status_code=404, detail="Object not found")
+
+@app.post("/apis/actions/{action_id}/rerun", response_model=Action)
+async def rerun_action(request_data: ReRunActionRequest, request:Request, action_id:int, user:User=Depends(authenticate_or_deny)):
+    try:
+        action = service.rerun_action(action_id, request=request_data.request, raw_text=request_data.raw_text, user=user)
         return action
     except ObjectNotFound:
         raise HTTPException(status_code=404, detail="Object not found")

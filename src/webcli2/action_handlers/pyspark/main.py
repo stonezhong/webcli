@@ -158,7 +158,7 @@ class PySparkActionHandler(ActionHandler):
                         try:
                             cli_package = CLIPackage.model_validate(payload_json)
                         except ValidationError:
-                            logger.debug(f"{log_prefix}: not a CLIPackage")
+                            logger.exception(f"{log_prefix}: not a CLIPackage")
                             continue
 
                         if cli_package.package_type != PackageType.RESPONSE:
@@ -270,7 +270,7 @@ class PySparkActionHandler(ActionHandler):
             log_api_exit(logger, log_prefix)
             return False
         except:
-            logger.debug(f"{log_prefix}: exception captured", exc_info=True)
+            logger.exception(f"{log_prefix}: exception captured")
 
     def run_pyspark_code(self, *, user:User, client_id:str, command_type:CommandType, source_code:str)->str:
         pyspark_handler_configuration = self.webcli_engine.get_action_handler_configuration("pyspark", user.id)
