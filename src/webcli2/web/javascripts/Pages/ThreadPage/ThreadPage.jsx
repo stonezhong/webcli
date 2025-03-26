@@ -8,19 +8,20 @@ import Button from 'react-bootstrap/Button';
 import { SplitViewHorizontal } from "@/Components/SplitView";
 import Spinner from 'react-bootstrap/Spinner';
 import Alert from 'react-bootstrap/Alert';
-import pino from 'pino';
-import { MdModeEdit, MdDelete } from "react-icons/md";
+import Stack from 'react-bootstrap/Stack';
+import pino from 'pino/browser';
+import { MdModeEdit, MdDelete, MdCancel } from "react-icons/md";
 import { setStateAsync } from "@/tools.js";
 import { PageHeader } from "@/Components/PageHeader";
 import ReactMarkdown from "react-markdown";
-import { FaUpLong, FaDownLong } from "react-icons/fa6";
+import { FaUpLong, FaDownLong, FaPlay } from "react-icons/fa6";
 import mermaid from 'mermaid';
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
     update_thread_action_show_question, update_thread_action_show_answer,
     update_thread_title, update_thread_description, move_thread_action_up,
-    move_thread_action_down
+    move_thread_action_down, rerun_action
 } from '@/apis';
 
 import {
@@ -72,12 +73,14 @@ const MermaidDiagram = ({ chart }) => {
             Container (the container for user input text)
  */
 const logger = pino({
+    browser: {
+        asObject: false,
+      },
     level: 'debug',
-    transport: {
-        target: 'pino-pretty',
-        options: { colorize: true },
-    },
 });
+
+// If you use logger.debug("..."), you need to set console output level to verbose in Google Chrome
+
 
 // Example of closing the connection after 10 seconds
 // setTimeout(() => {
@@ -93,6 +96,70 @@ class ThreadActionWrapper {
     constructor(threadAction) {
         this.threadAction = threadAction;
         // this.editing_title = false;     // editing title?
+    }
+}
+
+/**********************************************************************************
+ * This component renders an action question. It is a stateful component.
+ * It allow user to edit, re-run and cancel edit an action
+ */
+class ActionQuestionView extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            text:this.props.text,
+            editing: false,
+        };
+    }
+
+    render() {
+        return <Stack direction="horizontal" gap={3}>
+            <div className="question-raw-text">
+                {this.state.editing && <Form.Control as="textarea" rows={6} 
+                    value={this.state.text}
+                    onChange={async (event) => {
+                        await setStateAsync(this, {
+                            text: event.target.value
+                        });
+                    }}
+                    placeholder='Please input your command'
+                />}
+                { !this.state.editing && <pre>{this.props.text}</pre> }
+            </div>
+            <div>
+                {
+                    !this.state.editing && <MdModeEdit 
+                        className="standard-icon clickable-icon"
+                        title="modify question"
+                        onClick={async event => {
+                            await setStateAsync(this, {editing: true});
+                        }}   
+                    />
+                }
+                {
+                    this.state.editing && <FaPlay 
+                        className="standard-icon clickable-icon"
+                        title="submit"
+                        onClick={async event => {
+                            const rerun_ok = await this.props.do_rerun(this.state.text);
+                            logger.info(`ActionQuestionView: do_rerun() retruns: ${rerun_ok}`);
+                            if (rerun_ok) {
+                                await setStateAsync(this, {editing: false});
+                            }
+                        }}   
+                    />
+                }
+                {
+                    this.state.editing && <MdCancel
+                        className="standard-icon clickable-icon"
+                        title="cancel modification"
+                        onClick={async event => {
+                            await setStateAsync(this, {editing: false});
+                        }}   
+                    />
+                }
+            </div>
+        </Stack>;
     }
 }
 
@@ -213,6 +280,7 @@ class EditableText extends React.Component {
                 {this.props.children}
                 <MdModeEdit 
                     className="editable-text-icon"
+                    title="modify title"
                     onClick={async event => {
                         await setStateAsync(this, {editing: true, saved_text: this.state.text});
                         if (this.editor_ref.current) {
@@ -394,6 +462,15 @@ export class ThreadPage extends React.Component {
         ];
     }
 
+    renderQuestion(action) {
+        return <ActionQuestionView 
+            text={action.raw_text} 
+            do_rerun={
+                raw_text => this.rerunAction({action, raw_text})
+            } 
+        />;
+    }
+
     /**********************************************************************************
      * Render an action
      * action: Action
@@ -464,7 +541,7 @@ export class ThreadPage extends React.Component {
             </table>
             
             {
-                (threadAction.show_question)?<div className="action-question-wrapper"><pre className="question-raw-text">{action.raw_text}</pre></div>:null
+                (threadAction.show_question)?<div className="action-question-wrapper">{this.renderQuestion(action)}</div>:null
             }
             {
                 (threadAction.show_answer)?(<div className="action-answer-wrapper">{this.renderAnswer(action)}</div>):null
@@ -490,7 +567,7 @@ export class ThreadPage extends React.Component {
      * Called when user hit "submit" button
      */
     sendAction = async () => {
-        logger.info("ThreadPage.sendAction: enter");
+        logger.debug("ThreadPage.sendAction: enter");
         const command = this.state.command;
         logger.info(`ThreadPage.sendAction: command=${command}`);
         const [actionHandler, request] = this.getActionRequestFromText(command);
@@ -499,8 +576,8 @@ export class ThreadPage extends React.Component {
         if (request === null) {
             // TODO: pop up some error message
             await this.addAlert("Unrecognized command");
-            logger.info("ThreadPage.sendAction: unrecognized command");
-            logger.info("ThreadPage.sendAction: exit");
+            logger.error("ThreadPage.sendAction: unrecognized command");
+            logger.debug("ThreadPage.sendAction: exit");
             return;
         }
 
@@ -510,20 +587,59 @@ export class ThreadPage extends React.Component {
             await setStateAsync(this, {
                 threadActionWrappers: [...this.state.threadActionWrappers, new ThreadActionWrapper(threadAction)]
             });
-            logger.info("ThreadPage.sendAction: exit");
+            logger.debug("ThreadPage.sendAction: exit");
         } 
         catch(err) {
             // TODO: pop up some error message
             await this.addAlert(err.message);
-            logger.info("ThreadPage.sendAction: error, ", err.message);
+            logger.error("ThreadPage.sendAction: error, ", err.message);
             return;
         }
+    }
 
+    rerunAction = async ({action, raw_text}) => {
+        logger.debug("ThreadPage.rerunAction: enter");
+        const command = this.state.command;
+        logger.info(`ThreadPage.rerunAction: action_id=${action.id}, raw_text=${raw_text}`);
+        const [actionHandler, request] = this.getActionRequestFromText(raw_text);
+
+        // if no action handler recognize the text, we will ignore it
+        if (request === null) {
+            // TODO: pop up some error message
+            await this.addAlert("Unrecognized command");
+            logger.error("ThreadPage.rerunAction: unrecognized command");
+            logger.debug("ThreadPage.rerunAction: exit");
+            return false;
+        }
+
+        try {
+            const updatedAction = await rerun_action({
+                action_id: action.id,
+                request, 
+                raw_text
+            });
+            updateMatchingItemsFromReactState({
+                element: this,
+                stateFieldName:"threadActionWrappers",
+                shouldUpdate: threadActionWrapper => threadActionWrapper.threadAction.action.id === action.id,
+                doUpdate: threadActionWrapper => {
+                    threadActionWrapper.threadAction.action = updatedAction;
+                }
+            });
+            logger.debug("ThreadPage.rerunAction: exit");
+            return true;
+        } 
+        catch(err) {
+            // TODO: pop up some error message
+            await this.addAlert(err.message);
+            logger.error("ThreadPage.rerunAction: error, ", err.message);
+            return false;
+        }
     }
 
     // after component is mounted
     async componentDidMount() {
-        logger.info("ThreadPage.componentDidMount: enter");
+        logger.debug("ThreadPage.componentDidMount: enter");
         
         const thread = await get_thread(this.props.threadId);
         const threadActionWrappers = thread.thread_actions.map(threadAction => new ThreadActionWrapper(threadAction));
@@ -536,7 +652,7 @@ export class ThreadPage extends React.Component {
         this.connect();
 
         logger.info("ThreadPage.componentDidMount: websocket is connected");
-        logger.info("ThreadPage.componentDidMount: exit");
+        logger.debug("ThreadPage.componentDidMount: exit");
     }
 
     // after component state changes
@@ -548,11 +664,11 @@ export class ThreadPage extends React.Component {
 
     // after component is unmounted
     componentWillUnmount() {
-        logger.info("ThreadPage.componentWillUnmount: enter");
+        logger.debug("ThreadPage.componentWillUnmount: enter");
         // const notificationManager = this.props.notificationManager;
         // notificationManager.disconnect();
         // console.log("App.componentWillUnmount: websocket is disconnected");
-        logger.info("ThreadPage.componentWillUnmount: exit");
+        logger.debug("ThreadPage.componentWillUnmount: exit");
     }
 
     onThreadEvent = async threadEvent => {
@@ -619,9 +735,13 @@ export class ThreadPage extends React.Component {
     }
 
     connect() {
-        logger.info("ThreadPage.connect: enter");
+        /***
+         * When StrictMode is on, componentDidMount may called more than once, in such case, connect() 
+         * maybe called when web socket is already connected, so we need to check webcli_socket
+         */
+        logger.debug("ThreadPage.connect: enter");
         if (window.webcli_socket) {
-            logger.info("ThreadPage.connect: WebSocket is already connected!");
+            logger.debug("websocket.open: exit, WebSocket is already connected!");
             return;
         }
 
@@ -629,38 +749,38 @@ export class ThreadPage extends React.Component {
 
         // Event: Connection opened
         window.webcli_socket.addEventListener("open", () => {
-            logger.info("websocket.open: enter");
+            logger.debug("websocket.open: enter");
             window.webcli_socket.send(JSON.stringify({ 
                 client_id: this.props.clientId,
                 thread_id: this.props.threadId,
             }));
-            logger.info("websocket.open: exit");
+            logger.debug("websocket.open: exit");
         });
 
         // Event: Connection closed
         window.webcli_socket.addEventListener("close", (event) => {
-            logger.info("websocket.close: enter");
+            logger.debug("websocket.close: enter");
             logger.info(`websocket.close: connection closed (Code: ${event.code}, Reason: ${event.reason})`);
             window.webcli_socket = null;
-            logger.info("websocket.close: exit");           
+            logger.debug("websocket.close: exit");           
         });
 
         // Event: Error
         window.webcli_socket.addEventListener("error", (error) => {
-            logger.info("websocket.error: enter");
-            logger.info("websocket.error: ", error);
+            logger.debug("websocket.error: enter");
+            logger.error("websocket.error: ", error);
             // shall we consider ourself disconnected?
-            logger.info("websocket.error: enter");
+            logger.debug("websocket.error: enter");
         });
 
         // Event: Message received
         window.webcli_socket.addEventListener("message", async (event) => {
-            logger.info("websocket.message: enter");
-            logger.info("websocket.message: received ", event.data);
+            logger.debug("websocket.message: enter");
+            logger.debug("websocket.message: received ", event.data);
             try {
                 if (event.data == "ping") {
-                    logger.info("websocket.message: ping from server, ignore");
-                    logger.info("websocket.message: exit");
+                    logger.debug("websocket.message: ping from server, ignore");
+                    logger.debug("websocket.message: exit");
                     return;
                 }
                 const parsedData = JSON.parse(event.data);
@@ -668,11 +788,11 @@ export class ThreadPage extends React.Component {
 
                 await this.onThreadEvent(parsedData);
             } catch (error) {
-                error("websocket.message: parse JSON error ", error);
+                logger.error("websocket.message: parse JSON error ", error);
             }
-            logger.info("websocket.message: exit");
+            logger.debug("websocket.message: exit");
         });
-        logger.info("ThreadPage.connect: exit");
+        logger.debug("ThreadPage.connect: exit");
     }
 
 

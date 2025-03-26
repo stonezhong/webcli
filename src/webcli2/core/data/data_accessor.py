@@ -268,6 +268,24 @@ class DataAccessor:
         ]
         return action
 
+    def prepare_for_rerun(self, action_id:int, *, handler_name:str, request:dict, raw_text:str, user:User):
+        """Update action's title.
+        """
+        db_action = self.session.get(DBAction, action_id)
+        if db_action is None or db_action.user_id != user.id:
+            raise ObjectNotFound(object_type="Action", object_id=action_id)
+        
+        db_action.handler_name = handler_name
+        db_action.is_completed = False
+        db_action.completed_at = None
+        db_action.raw_text = raw_text
+        db_action.request = request
+        self.session.add(db_action)
+        self.session.execute(
+            delete(DBActionResponseChunk).where(DBActionResponseChunk.action_id == action_id)
+        )
+        self.session.commit()
+
     def patch_action(self, action_id:int, *, user:User, title:Optional[PatchValue[str]]=None) -> Action:
         """Update action's title.
         """

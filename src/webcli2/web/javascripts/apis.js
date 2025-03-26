@@ -154,6 +154,20 @@ export async function update_action_title({action_id, title}) {
     await response.json();
 }
 
+export async function rerun_action({action_id, request, raw_text}) {
+    const response = await fetch(`/apis/actions/${action_id}/rerun`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({raw_text, request}),
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to rerun action title: ${response.status}`);
+    }
+    return await response.json();
+}
+
 export async function update_thread_action_show_question({thread_id, action_id, show_question}) {
     const response = await fetch(`/apis/threads/${thread_id}/actions/${action_id}`, {
         method: "PATCH",

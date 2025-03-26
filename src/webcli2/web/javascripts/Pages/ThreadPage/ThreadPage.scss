@@ -8,13 +8,22 @@
         padding-bottom: 12px;
 
         .action-question-wrapper {
-            background-color: white;
             margin-bottom: 4px;
 
             .question-raw-text {
+                background-color: white;
                 border: 1px solid silver;
                 padding: 4px;
-                margin-bottom: 0;
+                width: calc(100% - 80px);
+                pre {
+                    margin-bottom: 0;
+                }
+                textarea {
+                    font-family: monospace;
+                    font-size: 14px;
+                    height: 100%;
+                    border: 0;
+                }
             }
         }
         .action-answer-wrapper {
@@ -77,3 +86,4 @@ tr.action-title-editor {
         width: 260px;
     }
 }
+

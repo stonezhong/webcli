@@ -38,6 +38,12 @@ class WrongPassword(ServiceError):
 class NoHandler(ServiceError):
     pass
 
+class InvalidOperation(ServiceError):
+    pass
+
+class ReRunInCompleteAction(InvalidOperation):
+    pass
+
 class JWTTokenPayload(BaseModel):
     email: str
     password_version: int
@@ -360,6 +366,44 @@ class WebCLIService:
         with Session(self.db_engine) as session:
             da = DataAccessor(session)
             return da.append_action_to_thread(thread_id=thread_id, action_id=action_id, user=user)
+
+    def rerun_action(self, action_id:int, *, request:dict, raw_text:str, user:User) -> Action:
+        """Execute an existing action.
+        """
+        with Session(self.db_engine) as session:
+            da = DataAccessor(session)
+            action = da.get_action(action_id, user=user)
+            if not action.is_completed:
+                raise ReRunInCompleteAction()
+
+            action_handler_name, action_handler = self._discover_action_handler(request)
+            if action_handler_name is None:
+                raise NoHandler()
+            
+            da.prepare_for_rerun(
+                action_id, 
+                handler_name = action_handler_name,
+                request=request, 
+                raw_text=raw_text, 
+                user=user
+            )
+
+            action_handler_user_config = self.get_action_handler_user_config(
+                action_handler_name=action_handler_name,
+                user=user
+            )
+            # Invoke handler in thread pool, and no wait
+            self.executor.submit(
+                self._action_handler_handle_proxy,
+                action_handler.handle, 
+                action_id, 
+                request, 
+                user, 
+                action_handler_user_config
+            )
+            action = da.get_action(action_id, user=user)
+            logger.debug(f"WebCLIService.rerun_action: submit a thread task for {action_handler_name} to handle an action")
+            return action
 
     def complete_action(self, action_id:int, *, user:Optional[User]=None) -> Action:
         """Set an action to be completed.
