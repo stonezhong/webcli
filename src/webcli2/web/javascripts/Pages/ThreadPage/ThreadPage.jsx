@@ -16,6 +16,7 @@ import { PageHeader } from "@/Components/PageHeader";
 import ReactMarkdown from "react-markdown";
 import { FaUpLong, FaDownLong, FaPlay } from "react-icons/fa6";
 import mermaid from 'mermaid';
+import remarkGfm from 'remark-gfm'
 
 import { 
     get_thread, create_action, remove_action_from_thread, update_action_title,
@@ -30,6 +31,33 @@ import {
 
 import '@/global.scss';
 import './ThreadPage.scss';
+
+function HTMLWithScripts({ htmlString }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    // Insert HTML
+    container.innerHTML = htmlString;
+
+    // Extract and execute <script> tags
+    const scripts = container.querySelectorAll('script');
+    scripts.forEach((script) => {
+      const newScript = document.createElement('script');
+      if (script.src) {
+        newScript.src = script.src;
+      } else {
+        newScript.textContent = script.textContent;
+      }
+      document.body.appendChild(newScript); // or container.appendChild
+      script.remove();
+    });
+  }, [htmlString]);
+
+  return <div ref={containerRef} />;
+}
+
 
 const MermaidDiagram = ({ chart }) => {
     const ref = useRef(null);
@@ -410,10 +438,11 @@ export class ThreadPage extends React.Component {
 
     renderResponseChunk(action, response_chunk) {
         if (response_chunk.mime === "text/html") {
+            return <HTMLWithScripts key={response_chunk.id} htmlString={response_chunk.text_content} />;
             return <div key={response_chunk.id} dangerouslySetInnerHTML={{ __html: response_chunk.text_content }} />;
         }
         if (response_chunk.mime === "text/markdown") {
-            return <ReactMarkdown key={response_chunk.id}>{response_chunk.text_content}</ReactMarkdown>;
+            return <ReactMarkdown remarkPlugins={[remarkGfm]} key={response_chunk.id}>{response_chunk.text_content}</ReactMarkdown>;
         }
         if (response_chunk.mime === "application/x-webcli-mermaid") {
             return <MermaidDiagram key={response_chunk.id} chart={response_chunk.text_content} />;
